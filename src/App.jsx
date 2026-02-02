@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Github, Linkedin, Twitter, MapPin, ArrowUpRight, Code, Terminal, Cpu, Globe, Play, Pause, Disc, Clock } from 'lucide-react';
+import { MapPin, ArrowUpRight, Code, Terminal, Cpu, Globe, Play, Pause, Clock } from 'lucide-react';
 import './index.css';
 
 // --- AESTHETIC DATA ---
@@ -26,13 +26,16 @@ const LOFI_STATIONS = [
   { title: "Retro Synth", artist: "Wave", url: "https://cdn.pixabay.com/download/audio/2022/10/25/audio_5174092497.mp3", img: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=500&auto=format&fit=crop" },
 ];
 
-const QUOTES_API = [
+const QUOTES_DB = [
   "Simplicity is the ultimate sophistication.",
   "Make it simple, but significant.",
   "Code is poetry.",
   "Less is more.",
   "Creativity is intelligence having fun.",
-  "Design is intelligence made visible."
+  "Design is intelligence made visible.",
+  "Digital craftsmanship.",
+  "Art challenges technology.",
+  "Technology inspires art."
 ];
 
 const SLOTS = [
@@ -63,6 +66,26 @@ const CONTENT_TYPES = [
   { type: 'notify', id: 'c-notify' },
 ];
 
+// --- ICONS ---
+
+const GithubIcon = ({ className }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405 1.02 0 2.04.135 3 .405 2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+  </svg>
+);
+
+const LinkedinIcon = ({ className }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+  </svg>
+);
+
+const TwitterIcon = ({ className }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+);
+
 // --- COMPONENTS ---
 
 const Profile = ({ size }) => {
@@ -76,7 +99,7 @@ const Profile = ({ size }) => {
     <div className="profile-box">
       <div>
         <h1 className="name-huge">Deepanshu.</h1>
-        <p className="font-serif italic text-2xl text-gray-400 mt-2">Creative Developer</p>
+        <p className="font-serif italic text-2xl text-gray-400 mt-2">Software Developer & Creative Developer</p>
       </div>
       <div className="tag-pill">
         <MapPin size={12} /> New Delhi
@@ -174,11 +197,8 @@ const App = () => {
     document.documentElement.style.setProperty('--blob-color', randomTheme.blob);
     document.documentElement.style.setProperty('--blob-glow', `${randomTheme.blob}aa`);
 
-    // 2. Fetch Actual Quote from API
-    fetch('https://api.quotable.io/random?tags=technology,inspirational,creativity&maxLength=50')
-      .then(res => res.json())
-      .then(data => setQuote(data.content))
-      .catch(() => setQuote("Simplicity is the ultimate sophistication."));
+    // 2. Local Instant Quote (API is flaky)
+    setQuote(QUOTES_DB[Math.floor(Math.random() * QUOTES_DB.length)]);
 
     // 3. Shuffle Layout (Pin Profile @ 0)
     const pinned = CONTENT_TYPES[0];
@@ -230,13 +250,31 @@ const App = () => {
                   </div>
                 )}
 
-                {content.type === 'gh' && <a href="https://github.com/Deepanshu0211" className="center-xy text-gray-400 hover:text-white"><Github size={48} strokeWidth={1.5} /></a>}
-                {content.type === 'li' && <a href="https://www.linkedin.com/in/deepanshuyad/" className="center-xy text-gray-400 hover:text-white"><Linkedin size={48} strokeWidth={1.5} /></a>}
-                {content.type === 'x' && <a href="https://x.com/V3Deepanshu" className="center-xy text-gray-400 hover:text-white"><Twitter size={48} strokeWidth={1.5} /></a>}
+                {content.type === 'gh' && (
+                  <a href="https://github.com/Deepanshu0211" className="social-card group w-full h-full">
+                    <div className="center-xy">
+                      <GithubIcon className="w-6 h-6 text-violet-400 group-hover:text-violet-300 transition-all duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_0_15px_rgba(167,139,250,0.5)]" />
+                    </div>
+                  </a>
+                )}
+                {content.type === 'li' && (
+                  <a href="https://www.linkedin.com/in/deepanshuyad/" className="social-card group w-full h-full">
+                    <div className="center-xy">
+                      <LinkedinIcon className="w-6 h-6 text-sky-400 group-hover:text-sky-300 transition-all duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_0_15px_rgba(56,189,248,0.5)]" />
+                    </div>
+                  </a>
+                )}
+                {content.type === 'x' && (
+                  <a href="https://x.com/V3Deepanshu" className="social-card group w-full h-full">
+                    <div className="center-xy">
+                      <TwitterIcon className="w-6 h-6 text-gray-400 group-hover:text-cyan-100 transition-all duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]" />
+                    </div>
+                  </a>
+                )}
 
                 {content.type === 'time' && (
                   <div className="center-xy">
-                    <Clock size={32} className="mb-4 opacity-40" />
+                    <Clock size={24} className="mb-3 opacity-40" />
                     <span className="font-mono text-2xl">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                 )}
@@ -251,10 +289,10 @@ const App = () => {
                   <a href="mailto:dy3239073@gmail.com" className="notify-btn no-underline">
                     <div className="flex flex-col items-start justify-center h-full">
                       <span className="font-serif italic text-5xl">Say Hi</span>
-                      <span className="text-xs uppercase tracking-widest opacity-50 mt-1">Let's work together</span>
+                      {/* <span className="text-xs uppercase tracking-widest opacity-50 mt-1">Let's work together</span> */}
                     </div>
                     <div className="w-16 h-16 rounded-full border border-black/10 flex items-center justify-center group-hover:bg-black group-hover:text-white transition-colors">
-                      <ArrowUpRight size={32} strokeWidth={1.5} />
+                      <ArrowUpRight size={28} strokeWidth={1.5} />
                     </div>
                   </a>
                 )}

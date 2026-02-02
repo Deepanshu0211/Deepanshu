@@ -69,18 +69,113 @@ body {
   max-width: 1400px;
 }
 
+@media (max-width: 1200px) {
+  .aesthetic-grid {
+    grid-template-columns: repeat(3, 1fr);
+    height: auto;
+    overflow-y: visible;
+    padding: 40px 0;
+  }
+
+  /* Reset spans for 3-col */
+  .span-4x1 {
+    grid-column: span 3;
+  }
+}
+
 @media (max-width: 900px) {
+  .aesthetic-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+
+  .span-2x2 {
+    grid-column: span 2;
+    grid-row: span 2;
+  }
+
+  .span-2x1 {
+    grid-column: span 2;
+  }
+
+  .span-4x1 {
+    grid-column: span 2;
+  }
+
+  .span-1x2 {
+    grid-row: span 2;
+  }
+}
+
+@media (max-width: 600px) {
+  body {
+    overflow-y: auto;
+    height: auto;
+    align-items: flex-start;
+  }
+
   .aesthetic-grid {
     display: flex;
     flex-direction: column;
+    gap: 16px;
+    width: 90vw;
+    padding: 20px 0 100px 0;
     height: auto;
-    overflow-y: auto;
-    padding: 24px 0;
+    overflow-y: visible;
   }
 
+  /* Reset generic card */
   .glass-card {
-    min-height: 200px;
+    width: 100%;
+    min-height: unset;
+    height: auto;
+    border-radius: 28px;
   }
+
+  /* Profile - Immersive & Tall */
+  .span-2x2 {
+    height: 450px;
+  }
+
+  /* Wide Widgets (Music, Tech) */
+  .span-2x1,
+  .span-4x1 {
+    height: 220px;
+  }
+
+  /* Small Widgets (Socials, Time) -> Turned into "Action Bars" */
+  .span-1x1 {
+    height: 110px;
+    /* Short and wide button feel */
+  }
+
+  /* Vertical Widgets */
+  .span-1x2 {
+    height: 280px;
+  }
+
+  /* Typography & Inner Adjustments */
+  .profile-box {
+    padding: 24px;
+  }
+
+  h1.name-huge {
+    font-size: 3.5rem !important;
+  }
+
+  /* Make social icons feel centered in their new bars */
+  .span-1x1 .center-xy {
+    flex-direction: row;
+    gap: 16px;
+  }
+}
+
+/* Social Card */
+.social-card {
+  display: block;
+  width: 100%;
+  height: 100%;
+  text-decoration: none;
 }
 
 /* --- ULTRA GLASS CARD --- */
