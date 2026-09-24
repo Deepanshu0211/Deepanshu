@@ -1,0 +1,296 @@
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 245px;
+  background-color: #FAF8F5;
+  border-right: 1px solid #E5E1D8;
+  display: flex;
+  flex-direction: column;
+  padding: 44px 28px 40px 32px;
+  z-index: 100;
+  user-select: none;
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+/* BRAND HEADER */
+.brandHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.brandName {
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #1a1a1a;
+  text-transform: uppercase;
+  margin: 0;
+  line-height: 1;
+}
+
+.plusIcon {
+  font-size: 19px;
+  font-weight: 400;
+  color: #1a1a1a;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  user-select: none;
+}
+
+/* TIMELINE WRAPPER */
+.timelineWrapper {
+  position: relative;
+  margin-top: 54px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The continuous vertical guide line from Home down to Location */
+.verticalGuideLine {
+  position: absolute;
+  left: 10.25px;
+  top: 10px;
+  width: 1.5px;
+  background-color: #CEC8BD;
+  z-index: 1;
+  transform-origin: top center;
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+/* 3D ACTIVE DOT CONTAINER */
+.activeDotContainer {
+  position: absolute;
+  left: 6.75px;
+  top: 0px;
+  width: 8.5px;
+  height: 8.5px;
+  z-index: 10;
+  pointer-events: none;
+  transform-style: preserve-3d;
+  perspective: 600px;
+}
+
+/* Ambient 3D blur aura & soft depth shadow */
+.dotAmbientShadow {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.12) 55%, transparent 75%);
+  filter: blur(2.5px);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 3D Tactile Orb Dot */
+.activeDot3D {
+  position: relative;
+  width: 8.5px;
+  height: 8.5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, #525252 0%, #202020 45%, #050505 100%);
+  box-shadow: 
+    0 3px 6px rgba(0, 0, 0, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    inset 0 1px 1px rgba(255, 255, 255, 0.45);
+  z-index: 3;
+  transform-origin: center center;
+}
+
+/* Specular reflection highlight on the 3D sphere */
+.dotSpecular {
+  position: absolute;
+  top: 1.2px;
+  left: 1.6px;
+  width: 2.4px;
+  height: 1.4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  filter: blur(0.25px);
+  pointer-events: none;
+}
+
+/* Motion trail blur streak */
+.motionTrail {
+  position: absolute;
+  left: 1px;
+  top: 0;
+  width: 6.5px;
+  height: 16px;
+  border-radius: 4px;
+  background: linear-gradient(to bottom, rgba(20, 20, 20, 0.35), transparent);
+  filter: blur(2px);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+  transform-origin: top center;
+}
+
+/* Concentric landing shockwave ripple */
+.landingRipple {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: 1px solid rgba(20, 20, 20, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Hover preview ghost dot */
+.hoverGhostDot {
+  position: absolute;
+  left: 6.75px;
+  top: 0px;
+  width: 8.5px;
+  height: 8.5px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.25) 0%, rgba(0, 0, 0, 0.05) 50%, transparent 70%);
+  filter: blur(1px);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* Navigation items list */
+.navList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  margin-left: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  z-index: 2;
+}
+
+.navItem {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.navLink {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  font-size: 14.5px;
+  color: #63625f;
+  cursor: pointer;
+  text-align: left;
+  display: inline-block;
+  transition: color 0.25s ease, font-weight 0.2s ease;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.navLink.active {
+  color: #111111;
+  font-weight: 700;
+}
+
+.navLink:hover {
+  color: #111111;
+}
+
+/* LOCATION SECTION - Connected right below the navigation */
+.locationSection {
+  position: relative;
+  margin-top: 48px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  z-index: 2;
+}
+
+/* Target ring ◎ centered exactly on the X=11px axis with subtle 3D depth */
+.targetRing {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid #CEC7B9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background-color: #FAF8F5;
+  position: relative;
+  z-index: 3;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04), inset 0 1px 1px rgba(255, 255, 255, 0.7);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.targetDot {
+  width: 4.5px;
+  height: 4.5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #555 0%, #1a1a1a 60%, #000 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.locationDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.locationRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.25;
+}
+
+.greenDot {
+  width: 5.5px;
+  height: 5.5px;
+  border-radius: 50%;
+  background-color: #22c55e;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+}
+
+.currentlyText {
+  font-size: 11.5px;
+  color: #76746f;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.yellowDot {
+  width: 5.5px;
+  height: 5.5px;
+  border-radius: 50%;
+  background-color: #d97706;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(217, 119, 6, 0.35);
+}
+
+.cityText {
+  font-size: 12.5px;
+  color: #18181b;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
