@@ -1,0 +1,222 @@
+.companionContainer {
+  background: #fbf9f4;
+  border: 1.5px solid #2A4134;
+  border-radius: 4px;
+  padding: 24px;
+  box-shadow: 4px 6px 0px rgba(42, 65, 52, 0.12);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  max-width: 480px;
+  width: 100%;
+}
+
+.companionContainer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: repeating-linear-gradient(90deg, #5D7960 0, #5D7960 16px, #F0E6C5 16px, #F0E6C5 32px);
+}
+
+.speechBubble {
+  width: 100%;
+  background: #FAF7E8;
+  border: 1px solid #5D7960;
+  border-radius: 3px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  position: relative;
+}
+
+.speechBubble::after {
+  content: "";
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 12px;
+  height: 12px;
+  background: #FAF7E8;
+  border-right: 1px solid #5D7960;
+  border-bottom: 1px solid #5D7960;
+}
+
+.tinyLabel {
+  font: 9px/1 var(--font-mono), monospace;
+  letter-spacing: 0.12em;
+  color: #5D7960;
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.speechBubble p {
+  font-family: var(--font-serif), Georgia, serif;
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.4;
+  color: #2A4134;
+}
+
+.mascotStage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 10px 0 20px;
+}
+
+.characterButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  outline: none;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.characterButton:hover {
+  transform: scale(1.06);
+}
+
+.characterButton:focus-visible {
+  outline: 2px dashed #5D7960;
+  outline-offset: 4px;
+}
+
+.bounce {
+  transform: scale(0.92) translateY(6px) !important;
+}
+
+.haloRing {
+  position: absolute;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(151, 173, 128, 0.28) 0%, rgba(240, 230, 197, 0.08) 60%, transparent 80%);
+  top: 15px;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.pixelSprite {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 8px 12px rgba(42, 65, 52, 0.15));
+}
+
+.clickBadge {
+  margin-top: 8px;
+  font: 8px var(--font-mono), monospace;
+  letter-spacing: 0.1em;
+  color: #5D7960;
+  background: rgba(93, 121, 96, 0.12);
+  padding: 3px 8px;
+  border-radius: 20px;
+  border: 1px solid rgba(93, 121, 96, 0.25);
+  transition: all 0.2s ease;
+}
+
+.characterButton:hover .clickBadge {
+  background: #5D7960;
+  color: #FAF7E8;
+}
+
+.metaBadge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #2A4134;
+  margin-top: 4px;
+}
+
+.statusDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #5D7960;
+  box-shadow: 0 0 0 3px rgba(93, 121, 96, 0.2);
+  animation: pulseDot 2.2s infinite ease-in-out;
+}
+
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.7; }
+}
+
+.metaBadge strong {
+  font-family: var(--font-mono), monospace;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+}
+
+.metaBadge span {
+  font-family: var(--font-sans), sans-serif;
+  color: #666;
+}
+
+.poseSelector {
+  width: 100%;
+  border-top: 1px dashed rgba(42, 65, 52, 0.2);
+  padding-top: 14px;
+}
+
+.shelfLabel {
+  display: block;
+  font: 8px/1.2 var(--font-mono), monospace;
+  letter-spacing: 0.08em;
+  color: #74756e;
+  margin-bottom: 10px;
+}
+
+.thumbnails {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.thumbBtn {
+  background: #fff;
+  border: 1px solid #ddddd5;
+  border-radius: 3px;
+  padding: 4px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.thumbBtn:hover {
+  border-color: #5D7960;
+  background: #FAF7E8;
+}
+
+.activeThumb {
+  border-color: #5D7960;
+  background: #FAF7E8;
+  box-shadow: 0 0 0 1.5px #5D7960;
+}
+
+.thumbImage {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.thumbName {
+  font: 7px/1 var(--font-mono), monospace;
+  margin-top: 3px;
+  color: #2A4134;
+  text-transform: lowercase;
+}

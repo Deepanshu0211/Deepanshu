@@ -1,591 +1,142 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import dynamic from "next/dynamic";
-import { projects } from "@/data/portfolio";
+import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useMotionPreference } from "@/components/motionPreference";
-import EditorialMotion from "@/components/EditorialMotion";
-import Loader from "@/components/Loader";
-// import Playground from "@/components/Playground";
-import PersonalCard from "@/components/PersonalCard";
-import SmoothScroll from "@/components/SmoothScroll";
-import FloatingDock from "@/components/FloatingDock";
-import { discover } from "@/components/discoveries";
-import { playSfx } from "@/components/sfx";
+import styles from "./Portfolio.module.css";
+import Relic from "./Relic";
+import SiteMotion from "./SiteMotion";
+import MascotCompanion from "./MascotCompanion";
+import ImmersiveWork from "./ImmersiveWork";
 
-const Monogram = dynamic(() => import("@/components/Monogram"), {
-  ssr: false,
-  loading: () => <span className="monogram-loading">dy.</span>,
-});
-
-function ProjectArt({ type }: { type: string }) {
-  if (type === "impact")
-    return (
-      <div className="poster poster-impact">
-        <div className="poster-eyebrow">PEOPLE. PLACES. POSSIBILITIES.</div>
-        <div className="impact-globe">
-          <i />
-          <i />
-          <i />
-          <i />
-          <span>+</span>
-          <span>+</span>
-          <span>+</span>
-        </div>
-        <strong>
-          GOOD
-          <br />
-          IN ACTION.
-        </strong>
-        <div className="poster-caption">
-          <span>ImpactHub</span>
-          <span>CONNECTED FOR A REASON ↗</span>
-        </div>
-      </div>
-    );
-  if (type === "neatify")
-    return (
-      <div className="poster poster-neatify">
-        <div className="poster-eyebrow">A LITTLE LESS DIGITAL CHAOS.</div>
-        <div className="paper-stack">
-          <div>
-            01 <span>DOCUMENTS</span>
-          </div>
-          <div>
-            02 <span>IDEAS</span>
-          </div>
-          <div>
-            03 <span>EVERYTHING ELSE</span>
-          </div>
-        </div>
-        <strong>
-          A place for
-          <br />
-          <em>everything.</em>
-        </strong>
-        <div className="poster-caption">
-          <span>Neatify</span>
-          <span>MAKE ROOM FOR WHAT MATTERS ↗</span>
-        </div>
-      </div>
-    );
-  if (type === "gurukul")
-    return (
-      <div className="poster poster-gurukul">
-        <div className="poster-eyebrow">A MORE CONNECTED CAMPUS.</div>
-        <div className="campus-flower">✳</div>
-        <strong>
-          Present.
-          <br />
-          And protected.
-        </strong>
-        <div className="poster-caption">
-          <span>Gurukul</span>
-          <span>ATTENDANCE / STUDENT SAFETY ↗</span>
-        </div>
-      </div>
-    );
-  return (
-    <div className="poster poster-demox">
-      <div className="poster-eyebrow">AN IDENTITY THAT DOESN’T SIT STILL.</div>
-      <div className="demox-type" aria-hidden="true">
-        M<br />
-        <span>O</span>
-        <br />V<br />E
-      </div>
-      <strong>
-        Made
-        <br />
-        to move.
-      </strong>
-      <div className="poster-caption">
-        <span>Demox</span>
-        <span>DESIGN, IN ANOTHER DIMENSION ↗</span>
-      </div>
-    </div>
-  );
+function Star({ className = "" }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M50 0 57 36 85 15 64 43 100 50 64 57 85 85 57 64 50 100 43 64 15 85 36 57 0 50 36 43 15 15 43 36Z" fill="currentColor" /></svg>;
 }
+
+const journey = [
+  { company: "IIT Mandi", role: "Frontend Developer · AcadLMS", dates: "JUL 2026 — PRESENT", detail: "Contributing to an academic management platform for students and faculty. Building interfaces that make everyday academic work easier to navigate." },
+  { company: "Ethixweb", role: "Full Stack Developer Intern", dates: "AUG — SEP 2026", detail: "Built web applications with React, Node.js, and MongoDB, working across database optimization, REST APIs, and frontend performance." },
+  { company: "QSentia", role: "Software Development Intern", dates: "MAY — JUL 2026", detail: "Worked on an AI-powered financial research platform with TypeScript and Next.js, including interactive dashboards and real-time data visualization." },
+];
 
 export default function Portfolio() {
   const [menu, setMenu] = useState(false);
-  const [motion, toggleMotion] = useMotionPreference();
+
   const [copied, setCopied] = useState(false);
-  const [palette, setPalette] = useState(0);
-  const [iteration, setIteration] = useState(0);
-  const [loaderComplete, setLoaderComplete] = useState(false);
+  const [motion, toggleMotion] = useMotionPreference();
+  const root = useRef<HTMLDivElement>(null);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("dy-accent-color");
-      if (stored) {
-        document.documentElement.style.setProperty("--blue", stored);
-        window.dispatchEvent(new CustomEvent("dy-palette", { detail: stored }));
-      }
-    } catch {}
-  }, []);
+    if (!menu) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setMenu(false); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [menu]);
 
-  function changePalette(element?: HTMLElement) {
-    playSfx("accent");
-    window.dispatchEvent(new CustomEvent("dy-open-color-picker"));
-    if (element) discover("palette", element);
-  }
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
 
-  async function copy() {
-    playSfx("click");
+  async function copyEmail() {
     try {
       await navigator.clipboard.writeText("dy3239073@gmail.com");
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      location.href = "mailto:dy3239073@gmail.com";
-    }
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 2500);
+    } catch { window.location.href = "mailto:dy3239073@gmail.com"; }
   }
 
-  return (
-    <div className="editorial-site">
-      {!loaderComplete && <Loader onComplete={() => setLoaderComplete(true)} />}
-      <SmoothScroll enabled={motion} />
-      <EditorialMotion enabled={motion} />
-      {/* <Playground motion={motion} /> */}
-      <FloatingDock onPaletteChange={(e) => changePalette(e.currentTarget)} />
-
-      <a className="skip-link" href="#work">
-        Skip to work
+  return <div ref={root} className={styles.site} data-motion={motion ? "on" : "off"}>
+    <SiteMotion scope={root} enabled={motion} />
+    <a className={styles.skip} href="#work">Skip to selected work</a>
+    <header className={styles.header} id="top">
+      <a href="#top" className={styles.wordmark} aria-label="Deepanshu Yadav home">
+        d/y<Star />
+        <span className={styles.companionMiniBadge} title="Neatify digital companion online">
+          <img src="/mascot/expressions/idle.png" alt="Companion" width={22} height={22} />
+        </span>
       </a>
+      <span className={styles.headerNote}>INDEPENDENT DEVELOPER<br />BASED IN INDIA, ONLINE EVERYWHERE</span>
+      <button className={styles.menuButton} aria-expanded={menu} aria-controls="main-navigation" onClick={() => setMenu(!menu)}>{menu ? "CLOSE −" : "MENU +"}</button>
+      <nav id="main-navigation" className={`${styles.nav} ${menu ? styles.navOpen : ""}`} aria-label="Main navigation">
+        <a href="#work" onClick={() => setMenu(false)}>Work <sup>04</sup></a>
+        <a href="#person" onClick={() => setMenu(false)}>About</a>
+        <a href="#hello" onClick={() => setMenu(false)}>Let’s talk <span>↗</span></a>
+      </nav>
+    </header>
+    <main>
+      <section className={styles.worldHero} aria-labelledby="hero-title" data-world-hero>
+        <svg className={styles.orbitDrawing} viewBox="0 0 1400 850" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <g fill="none" stroke="currentColor" strokeWidth=".65">
+            <ellipse cx="710" cy="415" rx="490" ry="260" transform="rotate(-28 710 415)" />
+            <ellipse cx="710" cy="415" rx="510" ry="277" transform="rotate(-28 710 415)" />
+            <ellipse cx="710" cy="415" rx="535" ry="302" transform="rotate(-28 710 415)" strokeDasharray="2 10" />
+            <circle cx="710" cy="415" r="335" strokeDasharray="1 8" />
+            <path d="M90 415h1220M710 45v740M135 650l1120-470" strokeDasharray="3 8" />
+            <path d="M210 280h30m-15-15v30M1140 570h30m-15-15v30M880 115h25m-12-12v25" />
+          </g>
+        </svg>
+        <div className={styles.worldKicker}><span>EXPLORATIONS IN DIGITAL ARCHAEOLOGY</span><span>OBJECT NO. 001 / 2026</span></div>
+        <div className={styles.worldTitle} aria-hidden="true"><span data-world-word>Between</span><em data-world-word>worlds.</em></div>
+        <Relic key={motion ? "motion" : "still"} enabled={motion} />
+        <div className={styles.worldIdentity}><h1 id="hero-title">Deepanshu Yadav</h1><p>Creative developer & full-stack engineer.<br />Turning curious ideas into<br />things that work. And feel.</p></div>
+        <div className={styles.specimenNote}><span>STONE / SILICON</span><p>Old textures.<br />New possibilities.</p><span>INDIA / EARTH</span></div>
+        <div className={styles.worldBottom}><a href="#work">SELECTED WORK <span>↗</span></a><span>SCROLL TO UNEARTH <i>↓</i></span><a href="#person">THE HUMAN BEHIND IT ↗</a></div>
+      </section>
 
-      <div id="smooth-wrapper">
-        <div id="smooth-content">
-          <header className="personal-nav">
-            <a
-              href="#top"
-              className="personal-logo"
-              aria-label="Deepanshu Yadav home"
-            >
-              dy<span>↗</span>
-            </a>
-            {/* <span className="nav-caption">
-              A DEVELOPER’S PERSONAL CORNER OF THE INTERNET.
-            </span> */}
-            <nav
-              aria-label="Main navigation"
-              className={menu ? "personal-links is-open" : "personal-links"}
-            >
-              <a
-                href="#work"
-                onClick={() => {
-                  setMenu(false);
-                  playSfx("nav");
-                }}
-              >
-                Work <sup>04</sup>
-              </a>
-              <a
-                href="#person"
-                onClick={() => {
-                  setMenu(false);
-                  playSfx("nav");
-                }}
-              >
-                The person
-              </a>
-              <a
-                href="#experience"
-                onClick={() => {
-                  setMenu(false);
-                  playSfx("nav");
-                }}
-              >
-                Journey
-              </a>
-              <a
-                href="#hello"
-                onClick={() => {
-                  setMenu(false);
-                  playSfx("nav");
-                }}
-              >
-                Say hello ↗
-              </a>
-            </nav>
-            <button
-              className="personal-menu"
-              aria-label="Toggle navigation"
-              aria-expanded={menu}
-              onClick={() => {
-                setMenu(!menu);
-                playSfx("nav");
-              }}
-            >
-              {menu ? "Close −" : "Menu +"}
-            </button>
-          </header>
-
-          <main>
-            <section id="top" className="identity-hero">
-              {/* <div className="identity-topline">
-                <span>FRONTEND & FULL-STACK DEVELOPER</span>
-                <span>BASED IN INDIA / BUILDING EVERYWHERE</span>
-              </div> */}
-              <h1 className="identity-name" aria-label="DEEPANSHU YADAV.">
-                <span className="name-first" aria-hidden="true">
-                  {"DEEPANSHU".split("").map((char, i) => (
-                    <span
-                      key={i}
-                      className="name-char"
-                      data-char={char}
-                      style={{ "--char-i": i } as React.CSSProperties}
-                    >
-                      {char}
-                    </span>
-                  ))}
-                </span>
-                <span className="name-last" aria-hidden="true">
-                  {"YADAV".split("").map((char, i) => (
-                    <span
-                      key={i}
-                      className="name-char"
-                      data-char={char}
-                      style={{ "--char-i": 9 + i } as React.CSSProperties}
-                    >
-                      {char}
-                    </span>
-                  ))}
-                  <button
-                    className="name-dot"
-                    aria-label="Change the accent color"
-                    
-                  >
-                    .
-                  </button>
-                </span>
-              </h1>
-              <div className="identity-object">
-                <div className="identity-object-visual">
-                  <Monogram motion={motion} />
-                </div>
-                {/* <span className="object-caption">
-                  A LITTLE PLAY. A LOT OF INTENT.
-                </span> */}
-                {/* <span className="object-coordinate">
-                  FIG. 01 — PERSONAL EXPERIMENT
-                </span> */}
-              </div>
-              <div className="hero-personal-note">
-                <button
-                  className="spark-button"
-                  aria-label="Find a little spark"
-                  onClick={(e) => discover("spark", e.currentTarget)}
-                >
-                  <span className="note-asterisk">✳</span>
-                </button>
-                {/* <p>
-                  Not a studio.
-                  <br />
-                  Not a team of twenty.
-                  <br />
-                  <b>Just me, making things.</b>
-                </p> */}
-              </div>
-              <div className="identity-bottom">
-                {/* <p>
-                  I turn curious ideas into things
-                  <br />
-                  you can click, use, and feel.
-                </p> */}
-                {/* <a className="round-link" href="#work">
-                  <span>TAKE A LOOK AROUND</span>
-                  <i>↓</i>
-                </a> */}
-                {/* <span className="current-note">
-                  <i /> CURRENTLY: FRONTEND @ IIT MANDI
-                </span> */}
-              </div>
-              <span className="hero-side-note">
-                SCROLL. THERE’S MORE TO ME.
-              </span>
-            </section>
-
-            <section className="manifesto" aria-label="My approach">
-              <div className="manifesto-glow" aria-hidden="true" />
-              <div className="manifesto-label">A SMALL INTRODUCTION</div>
-              <p className="manifesto-text">
-                The internet has enough
-                <br />
-                ordinary.{" "}
-                <span>
-                  I’d rather make
-                  <br />
-                  something you <em>feel.</em>
-                </span>
-              </p>
-              <div className="manifesto-bottom">
-                <span>THOUGHTFULLY ENGINEERED.</span>
-                <span>SLIGHTLY OBSESSED WITH THE DETAILS. ↘</span>
-              </div>
-            </section>
-
-            <section id="work" className="work-gallery">
-              <div className="gallery-pin">
-                <div className="gallery-heading">
-                  <div>
-                    <span className="section-id">
-                      01 / THINGS I’VE PUT INTO THE WORLD
-                    </span>
-                    <h2>
-                      Proof of <em>curiosity.</em>
-                    </h2>
-                  </div>
-                  <div className="gallery-index">
-                    <span className="gallery-count">01</span>
-                    <span>/ 04</span>
-                    <i>↗</i>
-                  </div>
-                </div>
-                <div className="project-rail">
-                  {projects.map((p, i) => (
-                    <article
-                      className={`editorial-project project-${p.type}`}
-                      key={p.type}
-                    >
-                      <Link
-                        className="poster-link"
-                        href={`/work/${p.type}`}
-                        aria-label={`Explore ${p.name}`}
-                      >
-                        <ProjectArt type={p.type} />
-                        <span className="poster-open">VIEW PROJECT ↗</span>
-                      </Link>
-                      <div className="editorial-project-info">
-                        <span className="project-index">0{i + 1}</span>
-                        <div>
-                          <h3>
-                            <Link href={`/work/${p.type}`}>{p.name}</Link>
-                          </h3>
-                          <p>{p.description}</p>
-                          <div className="project-tech">
-                            {p.stack.join(" / ")}
-                          </div>
-                        </div>
-                        <span className="project-category">{p.category}</span>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-                <div className="gallery-bottom">
-                  <span>SELECTED WORK / WEB · MOBILE · DESKTOP · 3D</span>
-                  <div className="gallery-meter">
-                    <i />
-                  </div>
-                  <a
-                    href="https://github.com/Deepanshu0211"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    THE REST LIVES ON GITHUB ↗
-                  </a>
-                </div>
-              </div>
-            </section>
-
-            <section id="person" className="person-section">
-              <div className="person-title">
-                <span className="section-id">
-                  02 / THERE’S A PERSON IN HERE
-                </span>
-                <h2>
-                  Code is what I do.
-                  <br />
-                  <em>Curiosity</em> is who I am.
-                </h2>
-              </div>
-              <div className="person-layout">
-                <div className="sticky-card-col">
-                  <PersonalCard />
-                </div>
-                <div className="person-copy">
-                  <h3>
-                    Hey, I’m Deepanshu Yadav.
-                    <br />I like figuring things out.
-                    <br />
-                    Then making them feel right.
-                  </h3>
-                  <p>
-                    I’m studying Information Technology at Chandigarh
-                    University, while building real products across web, mobile,
-                    and desktop.
-                  </p>
-                  <p>
-                    Right now, I’m contributing to IIT Mandi’s AcadLMS. Before
-                    that, I worked across full-stack development at Ethixweb and
-                    an AI-driven investment platform at QSentia.
-                  </p>
-                  <p>
-                    I’m drawn to the space where engineering meets expression. A
-                    useful tool. An unexpected interaction. That tiny detail you
-                    might not notice, but would miss if it wasn’t there.
-                  </p>
-                  <a
-                    className="editorial-text-link"
-                    href="/Deepanshu-Yadav-Resume.pdf"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    A more formal introduction <span>Résumé ↗</span>
-                  </a>
-                  <div className="personal-details">
-                    <span>INDIA</span>
-                    <span>B.TECH · IT</span>
-                    <span>CLASS OF 2030</span>
-                  </div>
-                </div>
-              </div>
-              {/* <div className="obsession-line">
-                <span>THINGS I COME BACK TO</span>
-                <p>
-                  Clean code. <em>Good motion.</em> Useful ideas.{" "}
-                  <span>One more iteration.</span>
-                </p>
-              </div> */}
-            </section>
-
-            <section className="journey-section" id="experience">
-              <div className="journey-heading">
-                <span className="section-id">03 / EXPERIENCE</span>
-                <h2>
-                  The path <em>so far.</em>
-                </h2>
-                <p>
-                  Not a straight line. Every place taught me something different
-                  about engineering, design, and what it actually takes to ship.
-                </p>
-              </div>
-              <div className="journey-list">
-                {[
-                  {
-                    num: "01",
-                    company: "IIT Mandi",
-                    period: "Jul 2026 — Present",
-                    role: "Frontend Developer · AcadLMS",
-                    desc: "Contributing to the frontend development of AcadLMS, an enterprise academic management platform actively serving 1,000+ students and faculty.",
-                  },
-                  {
-                    num: "02",
-                    company: "Ethixweb",
-                    period: "Aug 2026 — Sep 2026",
-                    role: "Full Stack Developer Intern",
-                    desc: "Built scalable web apps with React, Node.js, and MongoDB. Optimized databases, streamlined REST APIs, and improved application load times by 25%.",
-                  },
-                  {
-                    num: "03",
-                    company: "QSentia",
-                    period: "May 2026 — Jul 2026",
-                    role: "Software Development Intern",
-                    desc: "Developed an AI-powered financial research platform using TypeScript and Next.js. Engineered interactive data dashboards and real-time visualization interfaces.",
-                  },
-                ].map((item) => (
-                  <article key={item.num} className="journey-item">
-                    <span>{item.num}</span>
-                    <div>
-                      <small>{item.period}</small>
-                      <h4>{item.role}</h4>
-                      <p>{item.desc}</p>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="toolbelt" aria-label="Tools and technologies">
-              <span className="section-id">
-                MY TOOLBELT, NOT MY PERSONALITY.
-              </span>
-              <div className="toolbelt-marquee-wrapper">
-                <div className="toolbelt-marquee-track">
-                  {["React", "Next.js", "TypeScript", "Three.js", "Rust", "Tailwind", "Node.js", "GSAP"].map((tool, i) => (
-                    <span key={i} className="toolbelt-item">
-                      <span className="toolbelt-word">{tool}</span>
-                      <i className="toolbelt-asterisk" aria-hidden="true">✳</i>
-                    </span>
-                  ))}
-                </div>
-                <div className="toolbelt-marquee-track" aria-hidden="true">
-                  {["React", "Next.js", "TypeScript", "Three.js", "Rust", "Tailwind", "Node.js", "GSAP"].map((tool, i) => (
-                    <span key={`dup-${i}`} className="toolbelt-item">
-                      <span className="toolbelt-word">{tool}</span>
-                      <i className="toolbelt-asterisk" aria-hidden="true">✳</i>
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className="toolbelt-detail">
-                <span>ALSO IN THE MIX</span>
-                <p>
-                  React Native · Node.js · Firebase · Supabase · PostgreSQL ·
-                  Tauri · GSAP
-                </p>
-              </div>
-            </section>
-
-            <section id="hello" className="hello-section">
-              <div className="hello-top">
-                <span className="section-id">
-                  04 / NO CONTACT FORM. JUST A CONVERSATION.
-                </span>
-                <span>YOUR NEXT IDEA STARTS HERE ↙</span>
-              </div>
-              <a className="hello-title" href="mailto:dy3239073@gmail.com">
-                <span>LET’S MAKE</span>
-                <span>
-                  <em>SOMETHING.</em>
-                  <i>↗</i>
-                </span>
-              </a>
-              <div className="hello-bottom">
-                <div>
-                  <p>A project, a question, or a very good idea.</p>
-                  <a href="mailto:dy3239073@gmail.com">dy3239073@gmail.com</a>
-                  <button onClick={copy} aria-label="Copy email address">
-                    {copied ? "COPIED ✓" : "COPY ↗"}
-                  </button>
-                  <span role="status" className="sr-only">
-                    {copied ? "Email address copied" : ""}
-                  </span>
-                </div>
-                <div className="personal-socials">
-                  <a
-                    href="https://github.com/Deepanshu0211"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    GitHub ↗
-                  </a>
-                  <a
-                    href="https://www.linkedin.com/in/deepanshuyad/"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    LinkedIn ↗
-                  </a>
-                  <a href="/Deepanshu-Yadav-Resume.pdf" download>
-                    Résumé ↗
-                  </a>
-                </div>
-              </div>
-            </section>
-          </main>
-
-       
+      <section className={styles.assembly} data-assembly aria-labelledby="assembly-title">
+        <div className={styles.assemblyScene} data-assembly-scene>
+          <div className={styles.assemblyHeading}><span className={styles.tinyLabel}>FIELD NOTES / 001</span><h2 id="assembly-title">Everything begins<br />with <em>a fragment.</em></h2></div>
+          <div className={styles.fragments} aria-hidden="true">
+            {[0, 1, 2, 3].map((piece) => <div key={piece} data-fragment className={`${styles.fragment} ${styles[`fragment${piece}`]}`}><Image src="/images/digital-relic.webp" alt="" width={1280} height={1280} sizes="(max-width: 700px) 80vw, 42vw" /></div>)}
+          </div>
+          <div className={styles.assemblyCopy}><span className={styles.tinyLabel}>OBSERVE. EXPERIMENT. ASSEMBLE.</span><p>A rough sketch. A stubborn problem.<br />An idea that won’t leave you alone.</p><p>I connect the pieces — design, code,<br />and a little instinct — until they<br />become something worth using.</p><span className={styles.assemblyProgress} aria-hidden="true"><i data-assembly-progress /></span></div>
+          <span className={styles.assemblyCaption}>FIG. 01 — THE SHAPE OF A WORK IN PROGRESS</span>
         </div>
-      </div>
+      </section>
+      <section className={styles.intro} data-reveal>
+        <div className={styles.sectionLabel}><span>01 / THE APPROACH</span><Star /></div>
+        <div><h2>Precise in the build.<br /><em>Human in the details.</em></h2><div className={styles.introBottom}><span>( A WORK IN PROGRESS. ALWAYS. )</span><p>Somewhere between a well-written function and a slightly offbeat idea — that’s where I like to work. Thoughtful interfaces, real-world tools, and the occasional happy accident.</p></div></div>
+      </section>
 
-      {/* <button
-        className="editorial-motion-toggle"
-        onClick={toggleMotion}
-        aria-pressed={motion}
-        aria-label="Enable animated motion"
-      >
-        {motion ? "◌ MOTION ON" : "○ MOTION OFF"}
-      </button> */}
-    </div>
-  );
+      <ImmersiveWork enabled={motion} />
+
+      <section id="person" className={styles.about}>
+        <div className={styles.aboutArtifact} data-reveal>
+          <span className={styles.tinyLabel}>03 / THE PERSON BEHIND THE PIXELS</span>
+          <div className={styles.identityCard}>
+            <div><span>DEVELOPER IDENTIFICATION</span><Star /></div>
+            <strong>DEEP<br />ANSHU<span>↗</span></strong>
+            <div className={styles.cardFoot}>
+              <span>INDIA / EARTH<br />PERPETUALLY CURIOUS</span>
+              <span className={styles.barcode} aria-hidden="true" />
+            </div>
+          </div>
+          <div className={styles.mascotSectionWrapper}>
+            <MascotCompanion />
+          </div>
+          <p className={styles.artifactNote}>Still figuring things out.<br />Still making things.</p>
+        </div>
+        <div className={styles.aboutCopy} data-reveal>
+          <h2>A person,<br /><em>not a pixel factory.</em></h2>
+          <p>I’m Deepanshu. An Information Technology student at Chandigarh University, building across web, mobile, and desktop.</p>
+          <p>Right now, I’m contributing to IIT Mandi’s AcadLMS. Before that: full-stack work at Ethixweb and an AI-driven research platform at QSentia.</p>
+          <p>I care about the part where a useful idea becomes something you actually enjoy using. The rhythm of a page. The response of a button. The things that make it feel considered. No generic AI templates — just deliberate craftsmanship, code that breathes, and a quietly helpful companion.</p>
+          <a href="/Deepanshu-Yadav-Resume.pdf" target="_blank" rel="noreferrer" className={styles.resume}>THE MORE FORMAL VERSION <span>Résumé ↗</span></a>
+          <div className={styles.tools}>
+            <span>USUALLY REACHING FOR</span>
+            <p>React · Next.js · TypeScript · Three.js<br />React Native · Rust · Tauri · GSAP</p>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.journey} id="experience" data-reveal><div><span className={styles.tinyLabel}>04 / ALONG THE WAY</span><h2>Learning.<br /> <em>By doing.</em></h2></div><div className={styles.journeyList}>{journey.map((item, index) => <details key={item.company}><summary><span className={styles.projectNumber}>0{index + 1}</span><span><strong>{item.company}</strong><small>{item.role}</small></span><span className={styles.dates}>{item.dates}</span><span className={styles.expand}>+</span></summary><p>{item.detail}</p></details>)}</div></section>
+
+      <section id="hello" className={styles.contact}>
+        <div className={styles.contactTop}><span>HAVE SOMETHING IN MIND?</span><span>GOOD THINGS START WITH A HELLO.</span></div>
+        <a href="mailto:dy3239073@gmail.com" className={styles.contactTitle}>LET’S MAKE<br /><span><em>something</em><span className={styles.contactArrow}>↗</span></span></a>
+        <div className={styles.contactBottom}><div><a href="mailto:dy3239073@gmail.com">dy3239073@gmail.com</a><button onClick={copyEmail} aria-label="Copy email address">{copied ? "COPIED ✓" : "COPY ↗"}</button><span role="status" className={styles.accessible}>{copied ? "Email address copied" : ""}</span></div><div className={styles.socials}><a href="https://github.com/Deepanshu0211" target="_blank" rel="noreferrer">GitHub ↗</a><a href="https://www.linkedin.com/in/deepanshuyad/" target="_blank" rel="noreferrer">LinkedIn ↗</a></div></div>
+      </section>
+    </main>
+    <footer className={styles.footer}><span>© {new Date().getFullYear()} DEEPANSHU YADAV</span><span>BUILT WITH INTENT. LEFT A LITTLE IMPERFECT.</span><button onClick={toggleMotion} aria-pressed={motion}>MOTION {motion ? "ON ◉" : "OFF ○"}</button><a href="#top">BACK TO TOP ↑</a></footer>
+  </div>;
 }

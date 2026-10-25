@@ -1,0 +1,177 @@
+.workGallery {
+  position: relative;
+  background: #040b17;
+  color: #f1f5fb;
+  overflow: clip;
+}
+
+.stage {
+  position: relative;
+  min-height: 100svh;
+  padding: 44px 5vw 0;
+}
+
+.galleryHeader,
+.galleryFooter {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.galleryHeader { min-height: 150px; }
+.kicker,
+.galleryMeta,
+.projectIndex,
+.projectTitle > span,
+.sceneCoordinates,
+.galleryFooter,
+.openProject {
+  font: 9px/1.6 var(--font-mono), monospace;
+  letter-spacing: .07em;
+}
+
+.kicker { color: #c9c4b6; }
+.galleryHeader h2 {
+  font: 400 clamp(45px, 6.4vw, 94px)/.84 var(--font-display), sans-serif;
+  letter-spacing: -.045em;
+  margin-top: 15px;
+}
+.galleryHeader h2 em { font: italic 400 1.05em var(--font-serif), serif; color: #c7c1b2; }
+.galleryMeta { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; color: #b2b0a8; padding-bottom: 4px; }
+.counter { color: #aaa79f; }
+.counter i { color: #fff; font-style: normal; }
+
+.track { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; }
+.slide {
+  height: min(65svh, 740px);
+  min-height: 410px;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 25px 3vw;
+  background: #07162a;
+}
+.slide::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 35% 0 0;
+  background: linear-gradient(0deg, rgb(3 8 19 / .9), transparent 82%);
+  pointer-events: none;
+}
+.sceneGlow {
+  position: absolute;
+  z-index: -1;
+  width: 66vw;
+  height: 66vw;
+  top: -40%;
+  left: 20%;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--scene-color) 30%, transparent), transparent 68%);
+  filter: blur(30px);
+  opacity: .65;
+}
+.projectIndex { position: absolute; top: 24px; left: 3vw; color: #d4d0c7; }
+.projectIndex span { color: #82847d; }
+.artLink {
+  position: absolute;
+  top: 9%;
+  right: 7%;
+  width: min(56vw, 810px);
+  height: 76%;
+  display: block;
+  transition: transform .8s cubic-bezier(.22,1,.36,1), filter .8s ease;
+}
+.artLink:hover { transform: translateY(-5px) scale(1.015); filter: drop-shadow(0 30px 60px rgb(0 0 0 / .28)); }
+.artwork { width: 100%; height: 100%; transform: rotate(1deg); transition: transform 1s cubic-bezier(.22,1,.36,1); }
+.artLink:hover .artwork { transform: rotate(0); }
+.artwork :global(.cover) { width: 100%; height: 100%; min-height: 100%; aspect-ratio: auto; padding: clamp(22px, 3vw, 48px); }
+.artwork :global([data-immersive-copy]) { display: none; }
+.artwork :global(.campusStar) { width: 60%; }
+.artwork :global(.neatifyCoverInner) { height: 70%; }
+.artwork :global(.mascotCoverImg) { width: min(20vw, 220px); height: min(20vw, 220px); }
+.artwork :global(.demoxWord) { font-size: clamp(90px, 14vw, 210px); }
+.openProject {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 16px;
+  background: #e8f3ff;
+  color: #041020;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity .3s ease, transform .3s ease;
+}
+.artLink:hover .openProject,
+.artLink:focus-visible .openProject { opacity: 1; transform: none; }
+.openProject i { font: 20px var(--font-sans), sans-serif; }
+.projectTitle { position: absolute; z-index: 2; left: 3vw; bottom: 42px; max-width: min(46vw, 580px); pointer-events: none; }
+.projectTitle > span { color: #c8c5bb; }
+.projectTitle h3 { font: 600 clamp(72px, 11vw, 170px)/.8 var(--font-display), sans-serif; letter-spacing: -.045em; margin-top: 16px; }
+.projectTitle p { font: italic 400 clamp(18px, 2vw, 28px)/1.1 var(--font-serif), serif; color: #e1ddd1; margin-top: 15px; }
+.sceneCoordinates { position: absolute; right: 3vw; bottom: 25px; color: #d1cdc1; text-align: right; max-width: 38%; }
+.galleryFooter { min-height: 70px; font-size: 8px; align-items: center; color: #b1c2d7; }
+.galleryFooter i { font: normal 20px var(--font-serif), serif; padding-left: 8px; }
+.galleryFooter a { display: flex; gap: 15px; align-items: center; min-height: 44px; }
+.galleryFooter a:hover { color: #fff; }
+.projectNav { display: flex; align-items: center; gap: 8px; }
+.projectNav > span { min-width: 38px; min-height: 44px; display: grid; place-items: center; color: #797c77; font: 8px var(--font-mono), monospace; position: relative; }
+.projectNav > span::after { content: ""; position: absolute; bottom: 7px; left: 10px; right: 10px; height: 1px; background: #596c84; transform: scaleX(.35); transition: transform .35s, background .35s; }
+.projectNav .active { color: #fff; }
+.projectNav .active::after { background: #78cfff; transform: scaleX(1); }
+
+.enhanced .stage { position: sticky; top: 0; height: 100svh; min-height: 640px; padding-top: 102px; }
+.enhanced { height: calc(100svh * var(--slide-count)); }
+.enhanced .galleryHeader { height: 166px; min-height: 0; }
+.enhanced .galleryHeader .kicker { visibility: hidden; }
+.enhanced .track { display: flex; width: max-content; height: calc(100% - 331px); margin-left: -5vw; gap: 0; }
+.enhanced .slide { flex: 0 0 100vw; width: 100vw; height: 100%; min-height: 0; }
+.enhanced .artLink { width: 57vw; height: 77%; right: 6%; top: 8%; }
+.enhanced .projectTitle { left: 4%; bottom: 8%; }
+.enhanced .projectTitle h3 { font-size: clamp(82px, 12vw, 190px); }
+.enhanced .sceneCoordinates { right: 4%; bottom: 7%; }
+.enhanced .galleryFooter { height: 63px; min-height: 0; }
+
+@media (max-width: 900px) {
+  .stage { padding: 35px 5vw 0; }
+  .galleryHeader { min-height: 120px; }
+  .track { grid-template-columns: 1fr; gap: 10px; }
+  .slide { height: min(74svh, 690px); min-height: 470px; }
+  .artLink { width: 75vw; height: 68%; top: 10%; right: 5%; }
+  .projectTitle { max-width: 57vw; bottom: 40px; }
+  .projectTitle h3 { font-size: clamp(68px, 12vw, 120px); }
+  .sceneCoordinates { max-width: 35%; font-size: 7px; }
+  .galleryFooter { position: sticky; bottom: 0; min-height: 64px; background: #040b17; }
+}
+
+@media (max-width: 600px) {
+  .stage { padding: 30px 5vw 0; }
+  .galleryHeader { min-height: 112px; align-items: flex-start; }
+  .galleryHeader h2 { font-size: 48px; }
+  .galleryMeta { font-size: 7px; padding-top: 4px; }
+  .galleryMeta > span:first-child { max-width: 115px; text-align: right; }
+  .slide { height: 76svh; min-height: 530px; padding: 20px; }
+  .projectIndex { left: 20px; top: 18px; font-size: 8px; }
+  .artLink { width: 94%; height: 56%; right: 3%; top: 15%; }
+  .artwork :global(.cover) { padding: 18px; }
+  .artwork :global(.coverLabel), .artwork :global(.coverFoot) { font-size: 7px; }
+.artwork :global([data-immersive-copy]) { display: none; }
+  .artwork :global(.mascotCoverImg) { width: 34vw; height: 34vw; }
+  .projectTitle { left: 20px; bottom: 48px; max-width: 75vw; }
+  .projectTitle h3 { font-size: clamp(76px, 19vw, 112px); margin-top: 8px; }
+  .projectTitle p { font-size: 18px; margin-top: 8px; }
+  .sceneCoordinates { right: 18px; bottom: 14px; font-size: 6px; }
+  .galleryFooter { min-height: 64px; gap: 8px; font-size: 6px; }
+  .galleryFooter > a { gap: 5px; font-size: 6px; }
+  .projectNav { gap: 0; }
+  .projectNav > span { min-width: 30px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artLink, .artwork, .openProject, .projectNav > span::after { transition: none; }
+}

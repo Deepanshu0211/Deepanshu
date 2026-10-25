@@ -1,24 +1,6 @@
 import type { Metadata } from "next";
-import { Barlow_Condensed, DM_Sans, IBM_Plex_Mono } from "next/font/google";
 import { siteUrl } from "@/data/portfolio";
 import "./globals.css";
-const display = Barlow_Condensed({
-  subsets: ["latin"],
-  weight: ["600", "700", "800"],
-  variable: "--font-display",
-  display: "swap",
-});
-const sans = DM_Sans({
-  subsets: ["latin"],
-  variable: "--font-sans",
-  display: "swap",
-});
-const mono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-mono",
-  display: "swap",
-});
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
@@ -54,7 +36,6 @@ export const metadata: Metadata = {
   category: "technology",
   alternates: {
     canonical: "/",
-    languages: { "en-US": "/" },
   },
   robots: {
     index: true,
@@ -68,7 +49,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: "Deepanshu Yadav | Frontend & Full-Stack Developer",
+    title: "Deepanshu Yadav — Creative Developer & Full-Stack Engineer",
     description:
       "I build polished digital products with React, Next.js, TypeScript, mobile apps, desktop tools, and interactive experiences for real users.",
     url: siteUrl,
@@ -86,7 +67,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Deepanshu Yadav | Frontend & Full-Stack Developer",
+    title: "Deepanshu Yadav — Creative Developer & Full-Stack Engineer",
     description:
       "Building web, mobile, desktop, AI, and interactive experiences with React, Next.js, TypeScript, and product-driven thinking.",
     images: ["/opengraph-image"],
@@ -102,7 +83,7 @@ export default function RootLayout({
     <html
       lang="en"
       data-scroll-behavior="smooth"
-      className={`${display.variable} ${sans.variable} ${mono.variable}`}
+      
     >
       <body>{children}</body>
     </html>
