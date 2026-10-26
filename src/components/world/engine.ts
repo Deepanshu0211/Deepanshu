@@ -8,6 +8,7 @@ import { Walker } from "./controller";
 import { createPost,FAR_LAYER,type Post } from "./post";
 import { wind } from "./materials";
 import { makePerson,walk as stride } from "./people";
+import { loadAvatar,makeAvatar } from "./avatar";
 import type { PlayerState } from "./net";
 import { computeBoundsTree,acceleratedRaycast } from "three-mesh-bvh";
 // BVH-accelerated picking: rays test a few dozen triangles instead of every triangle in a room.
@@ -87,8 +88,9 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  const motes=new T.Points(moteGeometry,moteMaterial);motes.frustumCulled=false;scene.add(motes);
  // Your own body, seen when you look down: it walks and runs with you and tucks its legs in a jump.
  // The head and neck are left out so the camera never sees the inside of them.
- const self=makePerson({skin:"#b9825c",top:"#2f4f43",bottom:"#2d3a6b",hair:"#1f1a17"});self.root.updateMatrixWorld(true);
- {const at=new T.Vector3();self.root.traverse(o=>{if(o instanceof T.Mesh&&o.getWorldPosition(at).y>1.4)o.visible=false;});}
+ // The visitor's own character model, rigged on load (avatar.ts). Its head is folded away so the camera never sits inside it.
+ let avatarFailed=false;const avatarReady=loadAvatar().catch(error=>{avatarFailed=true;console.warn("Character model unavailable",error);});
+ const self=makeAvatar();self.head.scale.setScalar(.001);
  self.root.visible=false;scene.add(self.root);let gait=0;
  // Friends in the room (net.ts): each one is an articulated person easing toward their latest pose, walking at
  // the speed they really walk, with a name tag that lights up green while they talk.
@@ -99,11 +101,11 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   g.fillStyle="#f1eadb";g.font="600 44px system-ui, sans-serif";g.textBaseline="middle";g.fillText(r.name.slice(0,16),104,66);r.texture.needsUpdate=true;}
  function makeRemote(id:string,name:string,color:string):Remote{
   let hash=0;for(const ch of id)hash=(hash*31+ch.charCodeAt(0))|0;
-  const person=makePerson({skin:skins[Math.abs(hash)%skins.length],top:color,bottom:"#2d3a6b",hair:"#1f1a17",longHair:Math.abs(hash)%3===0});person.root.visible=false;scene.add(person.root);
+  const person=avatarFailed?makePerson({skin:skins[Math.abs(hash)%skins.length],top:color,bottom:"#2d3a6b",hair:"#1f1a17",longHair:Math.abs(hash)%3===0}):makeAvatar(color);person.root.visible=false;scene.add(person.root);
   const canvas=document.createElement("canvas");canvas.width=512;canvas.height=128;const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;
   const tag=new T.Sprite(new T.SpriteMaterial({map:texture,transparent:true,depthWrite:false}));tag.scale.set(.72,.18,1);tag.position.y=2.02;person.root.add(tag);
   const r:Remote={person,tag,canvas,texture,name,color,talking:false,goal:null,gait:0,placed:false};drawTag(r);return r;}
- function dropRemote(id:string){const r=remotes.get(id);if(!r)return;remotes.delete(id);scene.remove(r.person.root);r.person.root.traverse(o=>{if(o instanceof T.Mesh)o.geometry.dispose();});r.texture.dispose();(r.tag.material as T.SpriteMaterial).dispose();}
+ function dropRemote(id:string){const r=remotes.get(id);if(!r)return;remotes.delete(id);scene.remove(r.person.root);r.person.root.traverse(o=>{if(o instanceof T.Mesh&&!o.userData.shared)o.geometry.dispose();});r.texture.dispose();(r.tag.material as T.SpriteMaterial).dispose();}
  function updateRemotes(dt:number){const k=1-Math.exp(-dt*12);for(const r of remotes.values()){const g=r.goal;if(!g)continue;const root=r.person.root;
   if(!r.placed){r.placed=true;root.position.set(g.x,g.y,g.z);root.rotation.y=g.yaw+Math.PI;}
   root.position.x+=(g.x-root.position.x)*k;root.position.y+=(g.y-root.position.y)*k;root.position.z+=(g.z-root.position.z)*k;
@@ -376,6 +378,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   catch(error){console.error(error);callbacks.notice("The neighbourhood could not load. The flat still works.");}
   await breathe();
   try{const m=await skyModule;step("Downloaded the sky");await breathe();if(destroyed)return;const created=m.createSky();created.root.traverse(o=>o.layers.set(FAR_LAYER));heavens=created;scene.add(created.root);step("Built the sky");}catch{/* the flat works without its sky */}
+  callbacks.progress?.(Math.min(.99,stepsDone/STEPS),"Dressing your character");await avatarReady;if(destroyed)return;
   indexShadows(lightRig);ensurePost();scene.updateMatrixWorld();let compiled=0;
   const compile=async(root:T.Object3D|undefined,label:string)=>{callbacks.progress?.(Math.min(.99,stepsDone/STEPS),`Compiling shaders · ${label} (${++compiled} of ${COMPILES})`);if(root)await prewarm(root);step(`Compiled ${label}`);};
   await compile(scene.children.includes(bedroom.root)?bedroom.root:undefined,"the bedroom");await compile(building.root,"walls and doors");
@@ -388,7 +391,8 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   const warmTag=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(document.createElement("canvas")),transparent:true,depthWrite:false}));scene.add(warmTag);
   const culled:T.Object3D[]=[];scene.traverse(o=>{if(o.frustumCulled){o.frustumCulled=false;culled.push(o);}});
   renderer.shadowMap.needsUpdate=true;for(const l of shadowLights)l.shadow.needsUpdate=true;
-  try{raster();bakeReflections();}catch(error){console.warn(error);}finally{for(const o of culled)o.frustumCulled=true;scene.remove(warmTag);warmTag.material.map?.dispose();warmTag.material.dispose();}
+  self.root.visible=true; // so the character's skinned shader compiles here too
+  try{raster();bakeReflections();}catch(error){console.warn(error);}finally{for(const o of culled)o.frustumCulled=true;self.root.visible=false;scene.remove(warmTag);warmTag.material.map?.dispose();warmTag.material.dispose();}
   if(destroyed)return;renderer.shadowMap.needsUpdate=true;bakeSoon=performance.now()+300;callbacks.progress?.(1,"Ready");callbacks.ready();renderer.setAnimationLoop(frame);
  })();
  return {enter,pause,interact,sit,stand,setStick(x:number,y:number){player.stick.set(x,y);},

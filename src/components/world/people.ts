@@ -4,7 +4,8 @@ import * as T from "three";
 // `pose` drives walking, running, sitting, bowling and batting. Built at real scale (adult ≈ 1.65 m).
 
 export interface Look { height?: number; skin: string; top: string; bottom: string; hair: string; saree?: string; longHair?: boolean; }
-export interface Person { root: T.Group; body: T.Group; hips: T.Group[]; knees: T.Group[]; shoulders: T.Group[]; elbows: T.Group[]; hands: T.Group[]; head: T.Mesh; }
+/** Joints are plain transforms, so a rigged model's bones (avatar.ts) can stand in for these pivots. */
+export interface Person { root: T.Group; body: T.Group; hips: T.Object3D[]; knees: T.Object3D[]; shoulders: T.Object3D[]; elbows: T.Object3D[]; hands: T.Object3D[]; head: T.Object3D; }
 
 const cache = new Map<string, T.Material>();
 function mat(color: string, roughness = .8, sheen = false) {
