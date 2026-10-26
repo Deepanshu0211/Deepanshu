@@ -22,6 +22,8 @@ const FinishShader = {
  * Post stack for the room: ambient occlusion grounds every object, a restrained bloom lets the lamp,
  * bulbs and screens breathe, and an outline traces whatever the visitor can interact with.
  */
+/** Render layer for distant scenery (outdoors, sky): drawn and shadowed normally, skipped by AO. */
+export const FAR_LAYER = 1;
 export function createPost(renderer: T.WebGLRenderer, scene: T.Scene, camera: T.PerspectiveCamera) {
   const size = renderer.getSize(new T.Vector2());
   const target = new T.WebGLRenderTarget(size.x, size.y, { type: T.HalfFloatType, samples: 4 });
@@ -31,6 +33,8 @@ export function createPost(renderer: T.WebGLRenderer, scene: T.Scene, camera: T.
   ao.updateGtaoMaterial({ radius: .32, distanceExponent: 1.4, thickness: 1.2, scale: 1.15, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
   ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 5, rings: 2, samples: 12 });
   ao.blendIntensity = .95; composer.addPass(ao);
+  // AO only matters within its 0.3 m radius, so the far layer (city, sky) is left out of its normal pass.
+  const aoRender = ao.render.bind(ao); ao.render = (...args: Parameters<typeof ao.render>) => { camera.layers.disable(FAR_LAYER); aoRender(...args); camera.layers.enable(FAR_LAYER); };
   const bloom = new UnrealBloomPass(new T.Vector2(size.x, size.y), .34, .62, .9); composer.addPass(bloom);
   const outline = new OutlinePass(new T.Vector2(size.x, size.y), scene, camera);
   outline.edgeStrength = 3.2; outline.edgeGlow = .35; outline.edgeThickness = 1.1; outline.visibleEdgeColor.set("#f6e6c2"); outline.hiddenEdgeColor.set("#3b3426"); outline.enabled = false; composer.addPass(outline);

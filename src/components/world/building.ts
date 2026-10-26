@@ -10,7 +10,7 @@ export const rooms: Record<Location,{center:[number,number];label:string}> = {
  bedroom:{center:[0,0],label:"The bedroom"}, archive:{center:[8,0],label:"The living room"},
  workshop:{center:[16,0],label:"The kitchen"},library:{center:[8,6.5],label:"The study"},rooftop:{center:[16,6.5],label:"The balcony"}
 };
-export interface Door { id:string; hinge:T.Group; leaf:T.Mesh; angle:number; target:number; base:number; destination:Location; tree:Octree; }
+export interface Door { id:string; hinge:T.Group; leaf:T.Mesh; angle:number; target:number; base:number; destination:Location; tree:Octree; /** The opening, for portal culling. */ portal:T.Box3; rooms:[Location,Location]; }
 type Opening=[from:number,to:number,bottom:number,top:number];
 export function createBuilding(){
  const root=new T.Group(),colliders=new T.Group();const doors:Door[]=[];const lights:T.PointLight[]=[];
@@ -47,7 +47,8 @@ export function createBuilding(){
    const frame=group(root,axis==="x"?[fixed,0,center]:[center,0,fixed]);frame.rotation.y=base;// Architraves sit just inside the opening so no face is coplanar with the plaster (that flickered).
    for(const x of [-.78,.78])box(frame,[.07,2.6,.26],[x,1.3,0],frameWood,.012);box(frame,[1.63,.1,.26],[0,2.57,0],frameWood,.012);
    const collision=new T.Mesh(new T.BoxGeometry(width,2.56,.085));collision.position.set(width/2,1.28,0);collision.updateMatrixWorld();const tree=new Octree().fromGraphNode(collision);collision.geometry.dispose();(collision.material as T.Material).dispose();
-   const door={id,hinge,leaf,base,angle:0,target:0,destination,tree};doors.push(door);
+   const portal=axis==="x"?new T.Box3(new T.Vector3(fixed-.25,0,low),new T.Vector3(fixed+.25,2.6,high)):new T.Box3(new T.Vector3(low,0,fixed-.25),new T.Vector3(high,2.6,fixed+.25));
+   const door={id,hinge,leaf,base,angle:0,target:0,destination,tree,portal,rooms:id.split("-") as [Location,Location]};doors.push(door);
  }
  solid([40,.2,30],[7,-.12,3]);
  // Bedroom: its window wall is modelled in the bedroom itself.

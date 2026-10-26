@@ -21,7 +21,7 @@ export class Walker {
    this.direction.set(strafe,0,-forward);if(this.direction.lengthSq()>1)this.direction.normalize();this.direction.applyAxisAngle(T.Object3D.DEFAULT_UP,this.yaw);
    const steps=Math.max(1,Math.ceil(dt/(1/120))),step=dt/steps;
    for(let i=0;i<steps;i++){
-     const speed=this.active?2.35:0;this.velocity.x=T.MathUtils.damp(this.velocity.x,this.direction.x*speed,12,step);this.velocity.z=T.MathUtils.damp(this.velocity.z,this.direction.z*speed,12,step);
+     const sprint=this.keys.has("ShiftLeft")||this.keys.has("ShiftRight"),speed=this.active?(sprint&&forward>0?3.6:2.35):0;this.velocity.x=T.MathUtils.damp(this.velocity.x,this.direction.x*speed,12,step);this.velocity.z=T.MathUtils.damp(this.velocity.z,this.direction.z*speed,12,step);
      if(this.active&&this.keys.has("Space")&&this.grounded){this.velocity.y=4.2;this.grounded=false;this.keys.delete("Space");}
      this.velocity.y-=14*step;this.capsule.translate(this.translation.copy(this.velocity).multiplyScalar(step));this.grounded=false;
      for(let j=0;j<4;j++){let hit=this.building.tree.capsuleIntersect(this.capsule);for(const extra of this.building.furniture){if(hit)break;hit=extra.capsuleIntersect(this.capsule);}if(!hit)break;this.capsule.translate(this.translation.copy(hit.normal).multiplyScalar(hit.depth+.00001));if(hit.normal.y>.5)this.grounded=true;const into=this.velocity.dot(hit.normal);if(into<0)this.velocity.addScaledVector(hit.normal,-into);}

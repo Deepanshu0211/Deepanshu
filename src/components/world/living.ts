@@ -66,7 +66,7 @@ export function createLiving(): Area {
   // Entry console: mirror, keys and a framed photo.
   const consoleTable = place(root, [-3.78, 0, -1.4], Math.PI / 2);
   box(consoleTable, [1.2, .04, .34], [0, .8, 0], oak, .01); for (const x of [-.55, .55]) for (const z of [-.13, .13]) cylinder(consoleTable, .015, .015, .78, [x, .39, z], metal("#2a2622", .45), 10); box(consoleTable, [1.1, .02, .3], [0, .2, 0], oak, .005);
-  const mirrorTarget = new T.WebGLCubeRenderTarget(256, { type: T.HalfFloatType }), mirrorCamera = new T.CubeCamera(.05, 30, mirrorTarget);
+  const mirrorTarget = new T.WebGLCubeRenderTarget(256, { type: T.HalfFloatType }), mirrorCamera = new T.CubeCamera(.05, 30, mirrorTarget); mirrorCamera.children.forEach(c => c.layers.enable(1));
   const mirror = mesh(consoleTable, new T.CircleGeometry(.42, 48), [0, 1.55, -.11], new T.MeshPhysicalMaterial({ color: "#ffffff", metalness: 1, roughness: .04, envMapIntensity: 2.6 })); mirror.castShadow = false;
   mesh(consoleTable, new T.TorusGeometry(.43, .018, 12, 64), [0, 1.55, -.11], finishes.brass());
   lathe(consoleTable, [[0, 0], [.1, 0], [.12, .04], [.1, .045], [.0, .02]], [-.35, .82, 0], ceramic("#2f4f43", .3));

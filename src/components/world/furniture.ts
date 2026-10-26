@@ -1,7 +1,7 @@
 import * as T from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { colors as c, box, cylinder, sphere, group, tube } from "./objects";
-import { fabric, ceramic, metal, emissive, surface, rugTexture, weave } from "./materials";
+import { colors as c, box, cylinder, sphere, group, tube, arcSegments } from "./objects";
+import { fabric, ceramic, metal, emissive, surface, rugTexture, weave, windify } from "./materials";
 
 // Shared furniture kit. Every piece is built around its floor footprint, facing +z, so rooms place
 // furniture with a position and a turn. Proportions follow real furniture in metres.
@@ -16,8 +16,8 @@ export function cushion(w: number, h: number, d: number, puff = .25, crease = 0,
   g.computeVertexNormals(); return g;
 }
 export function mesh(parent: T.Object3D, geometry: T.BufferGeometry, pos: number[], mat: T.Material) { const m = new T.Mesh(geometry, mat); m.position.set(pos[0], pos[1], pos[2]); m.castShadow = m.receiveShadow = true; parent.add(m); return m; }
-export function lathe(parent: T.Object3D, points: number[][], pos: number[], mat: T.Material, segments = 48) { return mesh(parent, new T.LatheGeometry(points.map(([x, y]) => new T.Vector2(x, y)), segments), pos, mat); }
-export function rod(parent: T.Object3D, a: number[], b: number[], r: number, mat: T.Material, sides = 16) {
+export function lathe(parent: T.Object3D, points: number[][], pos: number[], mat: T.Material, segments = arcSegments(Math.max(...points.map(p => p[0])), 12, 48)) { return mesh(parent, new T.LatheGeometry(points.map(([x, y]) => new T.Vector2(x, y)), segments), pos, mat); }
+export function rod(parent: T.Object3D, a: number[], b: number[], r: number, mat: T.Material, sides = arcSegments(r, 5, 16)) {
   const A = new T.Vector3(a[0], a[1], a[2]), B = new T.Vector3(b[0], b[1], b[2]);
   const m = mesh(parent, new T.CylinderGeometry(r, r, A.distanceTo(B), sides), [0, 0, 0], mat); m.position.copy(A).add(B).multiplyScalar(.5); m.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), B.sub(A).normalize()); return m;
 }
@@ -97,7 +97,7 @@ export function frame(parent: T.Object3D, pos: number[], turn: number, w: number
 }
 /** A pair of pleated linen curtains on a brass rod. Returns the panels so rooms can sway them. */
 export function curtains(parent: T.Object3D, center: number[], span: number, height: number, turn = 0, color = "#dccfb4") {
-  const g = place(parent, center, turn), cloth = fabric(color, .95); cloth.side = T.DoubleSide; const panels: T.Mesh[] = [];
+  const g = place(parent, center, turn), cloth = windify(fabric(color, .95), { kind: "cloth", top: height / 2, height, amp: .012 }); cloth.side = T.DoubleSide; const panels: T.Mesh[] = [];
   rod(g, [-span / 2 - .15, height / 2 + .08, 0], [span / 2 + .15, height / 2 + .08, 0], .016, finishes.brass());
   for (const x of [-1, 1]) {
     const geometry = new T.PlaneGeometry(.46, height, 28, 14), a = geometry.attributes.position;

@@ -5,8 +5,8 @@ import type {Weather} from "./world/objects";
 import type {Live} from "./world/live";
 import styles from "./ControlCentre.module.css";
 
-export interface Prefs{fov:number;sensitivity:number;lights:number;fan:number;life:boolean;ao:boolean;bloom:boolean;grain:boolean;volume:number}
-export const defaultPrefs:Prefs={fov:68,sensitivity:1,lights:1,fan:1,life:true,ao:true,bloom:true,grain:true,volume:.8};
+export interface Prefs{fov:number;sensitivity:number;lights:number;fan:number;life:boolean;ao:boolean;bloom:boolean;grain:boolean;volume:number;fps:boolean}
+export const defaultPrefs:Prefs={fov:68,sensitivity:1,lights:1,fan:1,life:true,ao:true,bloom:true,grain:true,volume:.8,fps:true};
 
 function Row({label,hint,children}:{label:string;hint?:string;children:ReactNode}){return <div className={styles.row}><span>{label}{hint&&<small>{hint}</small>}</span>{children}</div>;}
 function Toggle({on,onChange,label}:{on:boolean;onChange:(v:boolean)=>void;label:string}){return <button className={styles.toggle} role="switch" aria-checked={on} aria-label={label} onClick={()=>onChange(!on)}><i/></button>;}
@@ -42,6 +42,7 @@ export default function ControlCentre(props:{open:boolean;onClose:()=>void;prefs
     <Row label="Ambient occlusion"><Toggle label="Ambient occlusion" on={prefs.ao} onChange={v=>setPref("ao",v)}/></Row>
     <Row label="Bloom"><Toggle label="Bloom" on={prefs.bloom} onChange={v=>setPref("bloom",v)}/></Row>
     <Row label="Film grain & vignette"><Toggle label="Film grain" on={prefs.grain} onChange={v=>setPref("grain",v)}/></Row>
+    <Row label="FPS counter" hint="frame rate, frame time, resolution"><Toggle label="FPS counter" on={prefs.fps} onChange={v=>setPref("fps",v)}/></Row>
    </section>
    <section data-group><h3>World</h3>
     <Row label="Neighbourhood life" hint="people, traffic, birds"><Toggle label="Neighbourhood life" on={prefs.life} onChange={v=>setPref("life",v)}/></Row>

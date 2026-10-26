@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from "react";
 import * as T from "three";
 import {gsap} from "gsap";
-import {moonTexture,moonPhase} from "./world/sky";
+import {moonTextureAsync,moonPhase} from "./world/sky";
 import styles from "./Telescope.module.css";
 
 type Target="moon"|"jupiter"|"saturn"|"mars";
@@ -39,7 +39,8 @@ export default function Telescope({onClose,motion}:{onClose:()=>void;motion:bool
   const r=rand(9),positions=new Float32Array(2400*3);for(let i=0;i<2400;i++)positions.set([(r()-.5)*400,(r()-.5)*400,-300-r()*200],i*3);
   const starGeometry=new T.BufferGeometry();starGeometry.setAttribute("position",new T.BufferAttribute(positions,3));scene.add(new T.Points(starGeometry,new T.PointsMaterial({color:"#dfe6ff",size:1.2,sizeAttenuation:false,transparent:true,opacity:.8})));
   const bodies:Record<Target,T.Object3D>={moon:new T.Group(),jupiter:new T.Group(),saturn:new T.Group(),mars:new T.Group()};
-  const moon=new T.Mesh(new T.SphereGeometry(1.7,128,64),new T.MeshStandardMaterial({map:moonTexture(),bumpMap:moonTexture(true),bumpScale:1.1,roughness:1}));moon.rotation.y=-Math.PI/2;bodies.moon.add(moon);
+  const lunar=new T.MeshStandardMaterial({color:"#a8a59e",roughness:1});const moon=new T.Mesh(new T.SphereGeometry(1.7,128,64),lunar);moon.rotation.y=-Math.PI/2;bodies.moon.add(moon);
+  void Promise.all([moonTextureAsync(),moonTextureAsync(true)]).then(([map,bump])=>{lunar.map=map;lunar.bumpMap=bump;lunar.bumpScale=1.1;lunar.color.set("#ffffff");lunar.needsUpdate=true;});
   const jupiter=new T.Mesh(new T.SphereGeometry(1.55,96,64),new T.MeshStandardMaterial({map:bands(["#d8c3a5","#b88e6a","#e9dccb","#a5765a","#cdb08e"],3,true),roughness:.9}));jupiter.scale.y=.935;bodies.jupiter.add(jupiter);
   for(const [x,s] of [[-3.2,.06],[-4.6,.05],[2.9,.07],[4.4,.065]]){const m=new T.Mesh(new T.SphereGeometry(s,16,12),new T.MeshStandardMaterial({color:"#e9e4da",roughness:.8}));m.position.set(x,x*.03,0);bodies.jupiter.add(m);}
   const saturn=new T.Group();saturn.rotation.set(.45,0,.18);bodies.saturn.add(saturn);
@@ -75,7 +76,7 @@ export default function Telescope({onClose,motion}:{onClose:()=>void;motion:bool
   const up=()=>{drag=null;};
   el.addEventListener("wheel",wheel,{passive:false});el.addEventListener("pointerdown",down);el.addEventListener("pointermove",move);el.addEventListener("pointerup",up);el.addEventListener("pointercancel",up);
   return()=>{cancelAnimationFrame(raf);ro.disconnect();el.removeEventListener("wheel",wheel);el.removeEventListener("pointerdown",down);el.removeEventListener("pointermove",move);el.removeEventListener("pointerup",up);el.removeEventListener("pointercancel",up);
-   scene.traverse(o=>{if(o instanceof T.Mesh||o instanceof T.Points){o.geometry.dispose();const m=o.material as T.MeshStandardMaterial;if(m.map&&m.map!==moonTexture())m.map.dispose();m.dispose();}});renderer.dispose();renderer.forceContextLoss();renderer.domElement.remove();};
+   scene.traverse(o=>{if(o instanceof T.Mesh||o instanceof T.Points){o.geometry.dispose();const m=o.material as T.MeshStandardMaterial;if(m.map&&m!==lunar)m.map.dispose();m.dispose();}});renderer.dispose();renderer.forceContextLoss();renderer.domElement.remove();};
  },[motion,phase]);
  // Settle into focus once the eyepiece opens.
  useEffect(()=>{if(!motion)return;const state={v:7};const tween=gsap.to(state,{v:0,duration:1.8,delay:.25,ease:"power3.out",onUpdate:()=>setFocus(state.v)});return()=>{tween.kill();};},[motion]);

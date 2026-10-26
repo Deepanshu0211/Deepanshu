@@ -25,6 +25,7 @@ export async function createRaytracer(renderer: T.WebGLRenderer, scene: T.Scene,
     /** Build the BVH for the room in view; `hidden` objects (outdoors, sky, other rooms) are left out. */
     async prepare(sceneKey: string, hidden: T.Object3D[], skyTop: T.Color, skyBottom: T.Color) {
       if (building || sceneKey === key) return; building = true; ready = false;
+      scene.traverse(o => { if (o.userData.shadowProxy) hidden.push(o); }); // shadow-only stand-ins are not real surfaces
       const restore = hidden.map(o => [o, o.visible] as const); hidden.forEach(o => { o.visible = false; });
       const environment = scene.environment;
       sky.topColor.copy(skyTop); sky.bottomColor.copy(skyBottom); sky.update(); scene.environment = sky;

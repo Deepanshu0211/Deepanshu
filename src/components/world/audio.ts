@@ -2,10 +2,30 @@
 // position behind an HRTF panner with distance roll-off, so things get louder as you approach.
 // Indoor sources share a short room reverb; outdoor sources pass through a "walls and glass"
 // low-pass that opens up when you step onto the balcony. Nothing plays until the sound toggle.
+// Sound also travels like sound: every source belongs to a room, and reaches you along the best path through
+// doorways (open or shut), window glass, the open balcony, or plain wall. Each hop muffles and quietens it, and
+// through an open doorway it seems to come from the opening, the way sound bends around a corner. Each room
+// has its own echo: short and soft in the bedroom, bright and ringing on the kitchen tiles, almost none outside.
 import type { Location, Weather } from "./objects";
+import type { DoorSound } from "./engine";
 type Point = { x: number; y: number; z: number };
 type Surface = "wood" | "tile";
+type Room = Location | "outside";
+type Spot = { at: Point; room: Room; panner: PannerNode; filter: BiquadFilterNode; level: GainNode };
+type Reach = { trans: number; cutoff: number; via?: Point };
 const surfaceOf: Record<Location, Surface> = { bedroom: "wood", archive: "wood", library: "wood", workshop: "tile", rooftop: "tile" };
+/** Reverb by room: decay (s), wet level, brightness (0 dark … 1 bright), and early reflections (ms) from the nearest walls. */
+const acoustics: Record<Location, { decay: number; wet: number; bright: number; early: number[] }> = {
+  bedroom: { decay: .8, wet: .16, bright: .3, early: [9, 14, 21] }, // bed, rug and curtains soak it up
+  archive: { decay: 1.3, wet: .22, bright: .5, early: [12, 19, 27] },
+  library: { decay: 1, wet: .17, bright: .38, early: [11, 17, 24] }, // full shelves scatter and absorb
+  workshop: { decay: 1.7, wet: .3, bright: .85, early: [8, 13, 18, 26] }, // tile and steel ring
+  rooftop: { decay: .35, wet: .05, bright: .6, early: [6] }, // open air: one wall, then sky
+};
+function roomOf(p: Point): Room {
+  if (p.y < -1 || p.x < -4.2 || p.x > 20.2 || p.z < -3.6 || p.z > 10) return "outside";
+  if (p.x < 4) return "bedroom"; if (p.z > 3.25) return p.x < 12 ? "library" : "rooftop"; return p.x < 12 ? "archive" : "workshop";
+}
 
 export class RoomAudio {
   private ctx: AudioContext | null = null; private master!: GainNode; private indoor!: GainNode; private outdoor!: BiquadFilterNode; private outdoorGain!: GainNode;
@@ -26,13 +46,51 @@ export class RoomAudio {
     const rain = o.weather === "rain" ? 1 : 0; for (const g of this.rainBeds) g.gain.setTargetAtTime(.05 * rain, t, 1.2); this.outsideRain.gain.setTargetAtTime(.12 * rain, t, 1.2);
     for (const f of this.fans) { f.lfo.frequency.setTargetAtTime(Math.max(.01, 2 * this.fan), t, .8); f.air.gain.setTargetAtTime(.05 * Math.min(1.4, this.fan), t, .8); f.hum.gain.setTargetAtTime(this.fan > 0 ? .004 : 0, t, .8); }
   }
-  listener(p: Point, forward: Point, moving: boolean, location?: Location) {
+  listener(p: Point, forward: Point, moving: boolean, location?: Location, doors?: DoorSound[]) {
     if (!this.enabled || !this.ctx) return; const l = this.ctx.listener, t = this.ctx.currentTime;
     l.positionX.setTargetAtTime(p.x, t, .05); l.positionY.setTargetAtTime(p.y, t, .05); l.positionZ.setTargetAtTime(p.z, t, .05);
     l.forwardX.setTargetAtTime(forward.x, t, .05); l.forwardY.setTargetAtTime(forward.y, t, .05); l.forwardZ.setTargetAtTime(forward.z, t, .05); l.upX.value = 0; l.upY.value = 1; l.upZ.value = 0;
-    if (location && location !== this.location) { this.location = location; const open = location === "rooftop"; this.outdoor.frequency.setTargetAtTime(open ? 16000 : 650, t, .6); this.outdoorGain.gain.setTargetAtTime(open ? 1 : .55, t, .6); }
+    this.here.x = p.x; this.here.y = p.y; this.here.z = p.z; if (doors) this.doors = doors;
+    if (location && location !== this.location) { this.location = location; this.echo(location); }
+    if (performance.now() - this.lastPropagation > 80) { this.lastPropagation = performance.now(); this.propagate(); }
     if (moving && performance.now() - this.lastStep > 500) { this.lastStep = performance.now(); this.footstep({ x: p.x, y: 0, z: p.z }, surfaceOf[this.location]); }
   }
+  // ── propagation ──────────────────────────────────────────────────────────────
+  private spots = new Set<Spot>(); private doors: DoorSound[] = []; private here: Point = { x: 1.3, y: 1.6, z: 2.1 }; private lastPropagation = 0; private reach = new Map<Room, Reach>();
+  private verbs: Partial<Record<Location, { send: GainNode; wet: GainNode }>> = {}; private echoRoom: Location | null = null;
+  /** How well sound gets from the listener's room to every other room: transmission, the muffling cutoff, and the first doorway it bends through. */
+  private paths() {
+    const from = roomOf(this.here), reach = this.reach; reach.clear(); reach.set(from, { trans: 1, cutoff: 20000 });
+    const edges: [Room, Room, number, number, Point?][] = [];
+    for (const d of this.doors) { const o = d.open; edges.push([d.rooms[0], d.rooms[1], .16 + .84 * o, 450 + 15500 * o * o, o > .12 ? d : undefined]); }
+    for (const r of ["bedroom", "archive", "workshop", "library"] as Room[]) edges.push([r, "outside", .3, 700]); // through closed glass
+    edges.push(["rooftop", "outside", 1, 20000], ["workshop", "rooftop", .06, 260]); // open air; a solid wall
+    for (let pass = 0; pass < 5; pass++) for (const [a, b, trans, cutoff, via] of edges) for (const [x, y] of [[a, b], [b, a]] as [Room, Room][]) {
+      const known = reach.get(x); if (!known) continue; const t = known.trans * trans, current = reach.get(y);
+      if (!current || t > current.trans + 1e-4) reach.set(y, { trans: t, cutoff: Math.min(known.cutoff, cutoff), via: known.via ?? (x === from ? via : undefined) });
+    }
+    return from;
+  }
+  private propagate() { if (!this.ctx) return; const from = this.paths(); for (const s of this.spots) this.place(s, from); }
+  /** Muffle and quieten a source by its path, and hear it from the doorway when it comes round a corner. */
+  private place(s: Spot, from = roomOf(this.here), immediate = false) {
+    const t = this.ctx!.currentTime, tau = immediate ? 0 : .12, r = this.reach.get(s.room) ?? { trans: .03, cutoff: 220 }; let x = s.at.x, y = s.at.y, z = s.at.z;
+    if (r.via && s.room !== from) { const h = this.here, v = r.via, dx = v.x - h.x, dy = v.y - h.y, dz = v.z - h.z, near = Math.hypot(dx, dy, dz) || 1, far = Math.hypot(s.at.x - v.x, s.at.y - v.y, s.at.z - v.z), k = (near + far) / near; x = h.x + dx * k; y = h.y + dy * k; z = h.z + dz * k; }
+    if (!tau) { s.level.gain.value = r.trans; s.filter.frequency.value = r.cutoff; s.panner.positionX.value = x; s.panner.positionY.value = y; s.panner.positionZ.value = z; return; }
+    s.level.gain.setTargetAtTime(r.trans, t, tau); s.filter.frequency.setTargetAtTime(r.cutoff, t, tau);
+    s.panner.positionX.setTargetAtTime(x, t, tau); s.panner.positionY.setTargetAtTime(y, t, tau); s.panner.positionZ.setTargetAtTime(z, t, tau);
+  }
+  /** Crossfade to the listener's room echo; only that room's reverb stays connected, so idle ones cost nothing. */
+  private echo(room: Location) {
+    if (!this.ctx || room === this.echoRoom) return; const ctx = this.ctx, t = ctx.currentTime, a = acoustics[room];
+    let v = this.verbs[room];
+    if (!v) { const verb = ctx.createConvolver(); verb.buffer = this.impulse(a.decay, a.bright, a.early); const send = ctx.createGain(), wet = ctx.createGain(); wet.gain.value = 0; send.connect(verb).connect(wet).connect(this.master); v = this.verbs[room] = { send, wet }; }
+    if (!this.echoing.has(room)) { this.indoor.connect(v.send); this.echoing.add(room); } v.wet.gain.setTargetAtTime(a.wet, t, .25);
+    for (const r of this.echoing) if (r !== room) this.verbs[r]!.wet.gain.setTargetAtTime(0, t, .25);
+    this.echoRoom = room;
+    this.later(1500, () => { for (const r of this.echoing) if (r !== this.echoRoom) { this.indoor.disconnect(this.verbs[r]!.send); this.echoing.delete(r); } });
+  }
+  private echoing = new Set<Location>();
   /** One-shot sounds for interactions, placed where they happen. */
   tick(at: Point = { x: 0, y: 1, z: 0 }, kind = "click") {
     if (!this.enabled || !this.ctx || document.hidden) return;
@@ -116,11 +174,10 @@ export class RoomAudio {
     const ctx = this.ctx = new AudioContext(); this.noise = { white: this.buffer("white"), pink: this.buffer("pink"), brown: this.buffer("brown") };
     this.master = ctx.createGain(); this.master.gain.value = 0;
     const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 3; this.master.connect(comp).connect(ctx.destination);
-    // Indoor bus with a short, warm room reverb.
-    this.indoor = ctx.createGain(); const verb = ctx.createConvolver(); verb.buffer = this.impulse(1.6); const wet = ctx.createGain(); wet.gain.value = .22;
-    this.indoor.connect(this.master); this.indoor.connect(verb).connect(wet).connect(this.master);
-    // Outdoor bus: muffled by walls and glass until you are on the balcony.
-    this.outdoor = ctx.createBiquadFilter(); this.outdoor.type = "lowpass"; this.outdoor.frequency.value = 650; this.outdoorGain = ctx.createGain(); this.outdoorGain.gain.value = .55; this.outdoor.connect(this.outdoorGain).connect(this.master);
+    // Indoor bus, with the echo of whichever room you are standing in.
+    this.indoor = ctx.createGain(); this.indoor.connect(this.master); this.echo(this.location);
+    // Outdoor bus: each outdoor source is muffled by its own path (glass, or the open balcony), so the bus stays open.
+    this.outdoor = ctx.createBiquadFilter(); this.outdoor.type = "lowpass"; this.outdoor.frequency.value = 20000; this.outdoorGain = ctx.createGain(); this.outdoorGain.gain.value = 1; this.outdoor.connect(this.outdoorGain).connect(this.master);
     // Ceiling fans: blade-rate swish over a motor hum.
     for (const at of [{ x: -1.2, y: 3.9, z: .6 }, { x: 8.6, y: 3.9, z: -1 }]) {
       const air = ctx.createGain(); air.gain.value = .05; const swish = ctx.createGain(); swish.gain.value = .6; const lfo = ctx.createOscillator(); lfo.frequency.value = 2; const depth = ctx.createGain(); depth.gain.value = .4; lfo.connect(depth).connect(swish.gain); lfo.start();
@@ -155,11 +212,28 @@ export class RoomAudio {
       if (kind === "white") d[i] = w * .5; else if (kind === "brown") { last = (last + .02 * w) / 1.02; d[i] = last * 3.2; } else { b0 = .99765 * b0 + w * .099; b1 = .963 * b1 + w * .2965; b2 = .57 * b2 + w * 1.0526; d[i] = (b0 + b1 + b2 + w * .1848) * .18; } }
     return data;
   }
-  private impulse(seconds: number) { const ctx = this.ctx!, len = ctx.sampleRate * seconds, b = ctx.createBuffer(2, len, ctx.sampleRate); for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); } return b; }
+  /** A room's echo: a few early reflections off the nearest walls, then a diffuse tail that darkens as it decays. */
+  private impulse(seconds: number, bright = .6, early: number[] = []) {
+    const ctx = this.ctx!, rate = ctx.sampleRate, len = Math.floor(rate * seconds), b = ctx.createBuffer(2, len, rate);
+    for (let c = 0; c < 2; c++) {
+      const d = b.getChannelData(c); let low = 0;
+      for (let i = 0; i < len; i++) { const k = i / len, smooth = .15 + .8 * (1 - bright) * (.4 + k); low += (Math.random() * 2 - 1 - low) * (1 - smooth); d[i] = low * Math.pow(1 - k, 3.2); }
+      early.forEach((ms, j) => { const at = Math.floor((ms + c * 1.3 + j * .7) * rate / 1000); if (at < len) d[at] += (j % 2 ? -.55 : .7) * Math.pow(.72, j); });
+    }
+    return b;
+  }
   private filter(type: BiquadFilterType, frequency: number, q: number) { const f = this.ctx!.createBiquadFilter(); f.type = type; f.frequency.value = frequency; f.Q.value = q; return f; }
   private loop(kind: "white" | "pink" | "brown", chain: AudioNode[], out: AudioNode) { const s = this.ctx!.createBufferSource(); s.buffer = this.noise![kind]; s.loop = true; s.loopStart = Math.random(); let node: AudioNode = s; for (const n of chain) node = node.connect(n); node.connect(out); s.start(0, Math.random() * 3); return s; }
   private tone(freq: number, type: OscillatorType, out: AudioNode) { const o = this.ctx!.createOscillator(); o.type = type; o.frequency.value = freq; o.connect(out); o.start(); return o; }
-  private panner(p: Point, ref = 1.5, rolloff = 1.4) { const n = this.ctx!.createPanner(); n.panningModel = "HRTF"; n.distanceModel = "inverse"; n.refDistance = ref; n.maxDistance = 60; n.rolloffFactor = rolloff; n.positionX.value = p.x; n.positionY.value = p.y; n.positionZ.value = p.z; return n; }
+  /** A placed source. Callers connect into the panner as before; what they connect onward leaves after the path's muffling. */
+  private panner(p: Point, ref = 1.5, rolloff = 1.4) {
+    const n = this.ctx!.createPanner(); n.panningModel = "HRTF"; n.distanceModel = "inverse"; n.refDistance = ref; n.maxDistance = 60; n.rolloffFactor = rolloff; n.positionX.value = p.x; n.positionY.value = p.y; n.positionZ.value = p.z;
+    const filter = this.filter("lowpass", 20000, .5), level = this.ctx!.createGain(), spot: Spot = { at: p, room: roomOf(p), panner: n, filter, level };
+    n.connect(filter).connect(level);
+    const nativeDisconnect = n.disconnect.bind(n) as () => void;
+    Object.assign(n, { connect: (destination: AudioNode) => level.connect(destination), disconnect: () => { nativeDisconnect(); filter.disconnect(); level.disconnect(); this.spots.delete(spot); } });
+    if (!this.reach.size) this.paths(); this.place(spot, roomOf(this.here), true); this.spots.add(spot); return n;
+  }
   /** A short burst: noise or tone through a filter and an envelope, at a place, then cleaned up. */
   private burst(at: Point, o: { noise?: "white" | "pink" | "brown"; freq?: number; to?: number; type?: OscillatorType; filter?: [BiquadFilterType, number, number]; gain: number; attack?: number; decay: number; bus?: AudioNode; ref?: number }) {
     const ctx = this.ctx!, t = ctx.currentTime, g = ctx.createGain(), p = this.panner(at, o.ref ?? 1.2, 1.5);

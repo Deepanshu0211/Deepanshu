@@ -14,10 +14,9 @@ export function moonPhase(date = new Date()) {
 function seeded(seed: number) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
 const lunar = new Map<string, T.CanvasTexture>();
 /** Lunar surface from a simulated heightfield: bowl craters with raised rims, soft maria and ray systems. `bump` returns the height map. */
-export function moonTexture(bump = false) {
-  const key = bump ? "bump" : "albedo"; const hit = lunar.get(key); if (hit) return hit;
+/** The lunar heightfield as a resumable job, so it can run in small slices instead of one long freeze. */
+function* lunarWork(): Generator<void, void, void> {
   const W = 1024, H = 512, r = seeded(7);
-  if (!lunarField) {
     // Periodic value noise so the texture wraps around the sphere without a seam.
     const lattice = new Float32Array(256 * 256).map(() => r());
     const noise = (x: number, y: number, period: number) => { const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
@@ -25,15 +24,16 @@ export function moonTexture(bump = false) {
       return (at(xi, yi) * (1 - sx) + at(xi + 1, yi) * sx) * (1 - sy) + (at(xi, yi + 1) * (1 - sx) + at(xi + 1, yi + 1) * sx) * sy; };
     const fbm = (u: number, v: number, base: number, octaves: number) => { let s = 0, a = .5, f = base; for (let o = 0; o < octaves; o++) { s += a * noise(u * f, v * f, f); a *= .5; f *= 2; } return s; };
     const height = new Float32Array(W * H), albedo = new Float32Array(W * H);
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    for (let y = 0; y < H; y++) { if (y % 8 === 7) yield; for (let x = 0; x < W; x++) {
       const u = x / W, v = y / H, i = y * W + x;
       const mare = Math.max(0, Math.min(1, (fbm(u, v * .5, 3, 5) - .5) * 4.5 + .4 - Math.abs(v - .45) * 1.4));
       const grain = fbm(u, v * .5, 64, 3);
       albedo[i] = .7 - mare * .36 + (grain - .5) * .1 + (fbm(u, v * .5, 16, 4) - .5) * .12;
       height[i] = (grain - .5) * .25 - mare * .15;
-    }
+    } }
     // Craters: power-law sizes, bowl + rim + faint ejecta; a few young ones get bright rays.
     for (let c = 0; c < 1100; c++) {
+      if (c % 60 === 59) yield;
       const R = Math.max(1.5, Math.pow(r(), 5) * 42), cx = r() * W, cy = 20 + r() * (H - 40), young = R > 14 && r() > .82;
       const reach = Math.ceil(R * (young ? 6 : 2));
       for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
@@ -46,9 +46,24 @@ export function moonTexture(bump = false) {
       }
     }
     lunarField = { height, albedo };
-  }
+}
+let lunarJob: Generator<void, void, void> | null = null;
+function ensureLunarField() { if (lunarField) return; lunarJob ??= lunarWork(); while (!lunarJob.next().done) { /* finish synchronously */ } }
+/** Build the moon in ~6 ms slices between frames, then hand back the texture. */
+export function moonTextureAsync(bump = false): Promise<T.CanvasTexture> {
+  return new Promise(resolve => {
+    if (lunarField) { resolve(moonTexture(bump)); return; }
+    lunarJob ??= lunarWork();
+    const step = () => { const t = performance.now(); while (performance.now() - t < 6) { if (lunarJob!.next().done || lunarField) { resolve(moonTexture(bump)); return; } } setTimeout(step, 0); };
+    setTimeout(step, 0);
+  });
+}
+export function moonTexture(bump = false) {
+  const key = bump ? "bump" : "albedo"; const hit = lunar.get(key); if (hit) return hit;
+  const W = 1024, H = 512;
+  ensureLunarField();
   const canvas = document.createElement("canvas"); canvas.width = W; canvas.height = H; const ctx = canvas.getContext("2d")!, image = ctx.createImageData(W, H);
-  const field = bump ? lunarField.height : lunarField.albedo;
+  const field = bump ? lunarField!.height : lunarField!.albedo;
   for (let i = 0; i < W * H; i++) {
     const value = bump ? Math.max(0, Math.min(255, 128 + field[i] * 90)) : Math.max(0, Math.min(255, field[i] * 255));
     image.data[i * 4] = value; image.data[i * 4 + 1] = value * (bump ? 1 : .985); image.data[i * 4 + 2] = value * (bump ? 1 : .96); image.data[i * 4 + 3] = 255;
@@ -101,7 +116,8 @@ export function createSky() {
   }
   // The moon, lit for tonight's phase.
   const moonPivot = new T.Group(); root.add(moonPivot);
-  const moonUniforms = { map: { value: moonTexture() }, sunDir: { value: new T.Vector3() }, brightness: { value: 1 }, earthshine: { value: .04 } };
+  const placeholder = new T.DataTexture(new Uint8Array([168, 165, 158, 255]), 1, 1); placeholder.needsUpdate = true;
+  const moonUniforms = { map: { value: placeholder as T.Texture }, sunDir: { value: new T.Vector3() }, brightness: { value: 1 }, earthshine: { value: .04 } };
   // Lit only by its own sun direction, so the terminator matches tonight's phase whatever the room lights do.
   const moon = new T.Mesh(new T.SphereGeometry(5.2, 64, 32), new T.ShaderMaterial({ uniforms: moonUniforms, fog: false, transparent: true, depthWrite: false,
     vertexShader: "varying vec2 vUv;varying vec3 vN;void main(){vUv=uv;vN=normalize(mat3(modelMatrix)*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}",
@@ -115,6 +131,8 @@ export function createSky() {
   const phase = moonPhase(), toMoon = moon.position.clone().normalize(), side = new T.Vector3(0, 1, 0).cross(toMoon).normalize(), angle = phase * Math.PI * 2;
   const sunForMoon = toMoon.clone().multiplyScalar(Math.cos(angle)).add(side.multiplyScalar(-Math.sin(angle))).normalize();
   moonUniforms.sunDir.value.copy(sunForMoon);
+  // The surface is generated in slices after the first frames; a flat tone stands in until then.
+  void moonTextureAsync().then(map => { moonUniforms.map.value = map; });
   // Distant city: a skyline ring and its lit windows.
   const ringGeometry = new T.CylinderGeometry(178, 178, 40, 96, 1, true);
   const far = skyline("far").clone(); far.wrapS = T.RepeatWrapping; far.repeat.set(12, 1); far.needsUpdate = true;

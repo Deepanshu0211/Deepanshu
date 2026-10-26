@@ -1,7 +1,7 @@
 import * as T from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { surface, leafTexture, mottle, projectSurfaces } from "./materials";
+import { surface, leafTexture, mottle, projectSurfaces, windify } from "./materials";
 
 export type Action = "projects" | "skills" | "about" | "experience" | "contact" | "lamp" | "weather" | "sound" | "keyboard" | "drawer" | "pet" | "duck" | "lab" | "chair" | "cat" | "telescope" | "computer" | "laptop" | "profile" | "record" | "radio" | "fridge" | "kettle" | "globe" | "swing" | `door:${string}` | `project:${string}` | `skill:${string}`;
 export type Weather = "rain" | "day" | "sunset" | "night";
@@ -22,19 +22,26 @@ export interface Area {
 }
 export const colors = { wood: "#7b4a2b", edge: "#3e2618", wall: "#e8dfcd", cream: "#e3d6bc", sage: "#2f4f43", rust: "#b4532a", dark: "#221c18", amber: "#ffcc83", teal: "#2d3a6b" };
 export function material(color: string, roughness?: number) { return surface(color, roughness); }
+/**
+ * Segments needed for a circle of radius r to stay within `tolerance` metres of the true curve.
+ * Tessellation follows size, as in game LOD authoring: big curves stay smooth, tiny ones stop
+ * paying for triangles nobody can see.
+ */
+export function arcSegments(r: number, min = 6, max = 32, tolerance = .0004) { const a = Math.acos(Math.max(-1, 1 - Math.min(tolerance / Math.max(r, 1e-5), 2))); return Math.max(min, Math.min(max, Math.ceil(Math.PI / a))); }
 export function box(parent: T.Object3D, size: number[], pos: number[], color: string | T.Material, radius = .035) {
-  const mesh = new T.Mesh(radius ? new RoundedBoxGeometry(size[0], size[1], size[2], 3, Math.min(radius, ...size.map(n => n / 3))) : new T.BoxGeometry(...size as [number, number, number]), typeof color === "string" ? material(color) : color);
+  const round = Math.min(radius, ...size.map(n => n / 3)), segments = Math.max(1, Math.min(3, Math.ceil(arcSegments(round, 4, 12, .0012) / 4)));
+  const mesh = new T.Mesh(radius ? new RoundedBoxGeometry(size[0], size[1], size[2], segments, round) : new T.BoxGeometry(...size as [number, number, number]), typeof color === "string" ? material(color) : color);
   mesh.position.set(...pos as [number, number, number]); mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
 }
-export function sphere(parent: T.Object3D, scale: number[], pos: number[], color: string | T.Material, segments = 24) {
-  const mesh = new T.Mesh(new T.SphereGeometry(1, segments, Math.round(segments * .75)), typeof color === "string" ? material(color) : color); mesh.scale.set(...scale as [number, number, number]); mesh.position.set(...pos as [number, number, number]); mesh.castShadow = true; parent.add(mesh); return mesh;
+export function sphere(parent: T.Object3D, scale: number[], pos: number[], color: string | T.Material, segments = arcSegments(Math.max(...scale), 8, 32)) {
+  const mesh = new T.Mesh(new T.SphereGeometry(1, segments, Math.max(6, Math.round(segments * .75))), typeof color === "string" ? material(color) : color); mesh.scale.set(...scale as [number, number, number]); mesh.position.set(...pos as [number, number, number]); mesh.castShadow = true; parent.add(mesh); return mesh;
 }
-export function cylinder(parent: T.Object3D, top: number, bottom: number, height: number, pos: number[], color: string | T.Material, segments = 32) {
+export function cylinder(parent: T.Object3D, top: number, bottom: number, height: number, pos: number[], color: string | T.Material, segments = arcSegments(Math.max(top, bottom), 8, 48)) {
   const mesh = new T.Mesh(new T.CylinderGeometry(top, bottom, height, segments), typeof color === "string" ? material(color) : color); mesh.position.set(...pos as [number, number, number]); mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
 }
 export function tube(parent: T.Object3D, points: number[][], radius: number, color: string | T.Material) {
   const curve = new T.CatmullRomCurve3(points.map(p => new T.Vector3(...p as [number, number, number])));
-  const mesh = new T.Mesh(new T.TubeGeometry(curve, 40, radius, 12, false), typeof color === "string" ? material(color) : color); mesh.castShadow = true; parent.add(mesh); return mesh;
+  const mesh = new T.Mesh(new T.TubeGeometry(curve, Math.max(6, Math.min(40, Math.ceil(curve.getLength() * 30))), radius, arcSegments(radius, 4, 12), false), typeof color === "string" ? material(color) : color); mesh.castShadow = true; parent.add(mesh); return mesh;
 }
 export function interactive<TObject extends T.Object3D>(object: TObject, action: Action, label: string): TObject { object.userData.action = action; object.userData.label = label; return object; }
 export function group(parent: T.Object3D, pos: number[]) { const g = new T.Group(); g.position.set(...pos as [number, number, number]); parent.add(g); return g; }
@@ -61,7 +68,9 @@ export function plant(parent: T.Object3D, pos: number[], scale = 1) {
   const profile = [[0,0],[.15,0],[.165,.012],[.2,.34],[.228,.355],[.232,.4],[.214,.405],[.2,.37],[.186,.36]].map(([x,y])=>new T.Vector2(x,y));
   const pot = new T.Mesh(new T.LatheGeometry(profile, 40), terracotta); pot.castShadow = pot.receiveShadow = true; g.add(pot);
   cylinder(g,.19,.19,.012,[0,.355,0],new T.MeshStandardMaterial({ color: "#2e2219", roughness: 1, bumpMap: mottle(), bumpScale: 2 }));
-  const greens = ["#56703f", "#6f8a4f", "#4a6236"].map(color => new T.MeshStandardMaterial({ color, map: leafTexture(), roughness: .52, side: T.DoubleSide }));
+  // Leaves stir in the air: the further from the soil, the more they move.
+  const soil = () => g.localToWorld(new T.Vector3(0, .36, 0));
+  const greens = ["#56703f", "#6f8a4f", "#4a6236"].map(color => windify(new T.MeshStandardMaterial({ color, map: leafTexture(), roughness: .52, side: T.DoubleSide }), { kind: "leaf", origin: soil, reach: .55 * scale, amp: .012 }));
   const stem = new T.MeshStandardMaterial({ color: "#647a46", roughness: .7 });
   const seed = Math.abs(Math.round(pos[0] * 13 + pos[2] * 7));
   for (let i = 0; i < 11; i++) {
@@ -125,4 +134,61 @@ export function collidersFrom(root: T.Object3D) {
     box.geometry.translate(centre.x, centre.y, centre.z); box.applyMatrix4(object.matrixWorld); parts.add(box);
   });
   return parts;
+}
+
+/**
+ * Freeze transforms of static scenery: compute world matrices once, then skip them in every
+ * frame's matrix update. Subtrees containing anything animated (`userData.dynamic`) or interactive
+ * (`userData.action`) stay live. Call after the root has its final position.
+ */
+const skip = () => {};
+export function freezeStatic(root: T.Object3D) {
+  root.updateMatrixWorld(true);
+  const live = (o: T.Object3D): boolean => Boolean(o.userData.dynamic || o.userData.action) || o.children.some(live);
+  for (const child of root.children) {
+    if (live(child)) continue;
+    child.traverse(o => { o.matrixAutoUpdate = false; o.matrixWorldAutoUpdate = false; });
+    child.updateMatrixWorld = skip; // the frame's matrix walk never descends into frozen scenery
+  }
+}
+/** Run work when the main thread is idle (falls back to a short timeout), so it never blocks a frame. */
+export function whenIdle(work: () => void, timeout = 400) {
+  const w = window as unknown as { requestIdleCallback?: (cb: () => void, o: { timeout: number }) => number };
+  if (w.requestIdleCallback) w.requestIdleCallback(work, { timeout }); else setTimeout(work, 16);
+}
+/** Layer seen only by shadow cameras. */
+export const SHADOW_LAYER = 2;
+/**
+ * Shadow proxies: a frozen room's shadow-casting scenery merged into one depth-only mesh per shadow side,
+ * so every shadow-map update draws it in a call or two instead of one per batch. The originals still draw
+ * and receive shadows exactly as before; only their casting moves to the proxy. Call after freezeStatic.
+ */
+export function shadowProxy(root: T.Object3D) {
+  const toRoot = root.matrixWorld.clone().invert(), local = new T.Matrix4(), v = new T.Vector3();
+  const sides = new Map<T.Side, T.Mesh[]>();
+  const shown = (o: T.Object3D) => { for (let p: T.Object3D | null = o; p && p !== root; p = p.parent) if (!p.visible) return false; return true; };
+  root.traverse(o => {
+    if (!(o instanceof T.Mesh) || o instanceof T.InstancedMesh || !o.castShadow || o.matrixWorldAutoUpdate || Array.isArray(o.material) || o.customDepthMaterial || !shown(o)) return;
+    const m = o.material as T.Material & { alphaMap?: T.Texture | null };
+    if (m.transparent || m.alphaTest > 0 || m.alphaMap || !o.geometry.attributes.position) return;
+    const side = m.shadowSide ?? ({ [T.FrontSide]: T.BackSide, [T.BackSide]: T.FrontSide, [T.DoubleSide]: T.DoubleSide } as Record<T.Side, T.Side>)[m.side];
+    let list = sides.get(side); if (!list) sides.set(side, list = []); list.push(o);
+  });
+  for (const [side, meshes] of sides) {
+    if (meshes.length < 2) continue;
+    let vertices = 0, indices = 0;
+    for (const m of meshes) { const g = m.geometry; vertices += g.attributes.position.count; indices += g.index ? g.index.count : g.attributes.position.count; }
+    const position = new Float32Array(vertices * 3), index = vertices > 65535 ? new Uint32Array(indices) : new Uint16Array(indices);
+    let vo = 0, io = 0;
+    for (const m of meshes) {
+      const g = m.geometry, p = g.attributes.position; local.multiplyMatrices(toRoot, m.matrixWorld);
+      for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).applyMatrix4(local); const k = (vo + i) * 3; position[k] = v.x; position[k + 1] = v.y; position[k + 2] = v.z; }
+      if (g.index) for (let i = 0; i < g.index.count; i++) index[io + i] = g.index.getX(i) + vo; else for (let i = 0; i < p.count; i++) index[io + i] = vo + i;
+      io += g.index ? g.index.count : p.count; vo += p.count; m.castShadow = false;
+    }
+    const geometry = new T.BufferGeometry(); geometry.setAttribute("position", new T.BufferAttribute(position, 3)); geometry.setIndex(new T.BufferAttribute(index, 1)); geometry.computeBoundingSphere();
+    const proxy = new T.Mesh(geometry, new T.MeshBasicMaterial({ colorWrite: false, depthWrite: false, shadowSide: side }));
+    proxy.castShadow = true; proxy.receiveShadow = false; proxy.layers.set(SHADOW_LAYER); proxy.userData.shadowProxy = true; proxy.name = "shadow proxy"; root.add(proxy);
+    proxy.matrixAutoUpdate = false; proxy.matrixWorld.copy(root.matrixWorld); proxy.matrixWorldAutoUpdate = false;
+  }
 }

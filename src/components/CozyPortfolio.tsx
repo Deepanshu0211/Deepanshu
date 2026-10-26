@@ -22,7 +22,8 @@ const deepLinks:Record<string,Panel>={"#work":"projects","#projects":"projects",
 const coarse=()=>matchMedia("(pointer: coarse)").matches,noSubscribe=()=>()=>{};
 function Words({text}:{text:string}){return <>{text.split(" ").map((word,i)=><Fragment key={i}>{i>0&&" "}<span className={styles.word} data-word><span>{word}</span></span></Fragment>)}</>;}
 export default function CozyPortfolio(){
- const [ready,setReady]=useState(false),[failed,setFailed]=useState(false),[active,setActive]=useState(false),[entered,setEntered]=useState(false),[classic,setClassic]=useState(false);
+ const [ready,setReady]=useState(false),[failed,setFailed]=useState(false),[active,setActive]=useState(false),[entered,setEntered]=useState(false),[classic,setClassic]=useState(false),[paused,setPaused]=useState(false),[progress,setProgress]=useState({value:0,label:"Opening the door"});
+ const lastMode=useRef<"pointer"|"drag"|"touch">("pointer");
  const touch=useSyncExternalStore(noSubscribe,coarse,()=>false);
  const [panel,setPanel]=useState<Panel|null>(null),[location,setLocation]=useState<Location>("bedroom"),[target,setTarget]=useState(""),[toast,setToast]=useState(""),[sound,setSound]=useState(false),[motion,setMotion]=useState(true),[weather,setWeather]=useState<Weather>("rain"),[lamp,setLamp]=useState(true),[quality,setQuality]=useState<"auto"|"low">("auto"),[stick,setStick]=useState({x:0,y:0}),[scope,setScope]=useState(false),[weatherMode,setWeatherMode]=useState<"live"|"manual">("live"),[live,setLive]=useState<Live|null>(null),[precise,setPrecise]=useState<{lat:number;lon:number}|null>(null),[spotify,setSpotify]=useState(false),[rtx,setRtx]=useState(false),[controls,setControls]=useState(false),[prefs,setPrefs]=useState<Prefs>(defaultPrefs),[samples,setSamples]=useState(0),[sitting,setSitting]=useState(false),[seat,setSeat]=useState<{id:"computer"|"laptop";x:number;y:number;w:number;h:number}|null>(null);
  const container=useRef<HTMLDivElement>(null),engine=useRef<WorldEngine|null>(null),audio=useRef<RoomAudio|null>(null),dialog=useRef<HTMLDialogElement>(null),timer=useRef<ReturnType<typeof setTimeout>|null>(null),actionRef=useRef<(action:Action)=>void>(()=>{}),options=useRef<WorldOptions>({motion:true,weather:"rain",lamp:true,quality:"auto",rtx:false});
@@ -31,8 +32,11 @@ export default function CozyPortfolio(){
  function announce(message:string){setToast(message);if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>setToast(""),4500);}
  function open(section:Panel){engine.current?.pause();setPanel(section);}
  // Closing plays the paper out first; reduced motion closes at once.
+ // Back to walking right away when a click closed it (pointer capture needs that click); otherwise the
+ // small "click to keep exploring" hint waits. The big entry screen is only for a real pause (Escape).
+ function resume(){if(entered&&!paused&&!touch&&navigator.userActivation?.isActive!==false)void engine.current?.enter(lastMode.current);}
  function close(){
-  const sheet=paper.current;if(!panel||closing.current)return;audio.current?.ui("close");
+  const sheet=paper.current;if(!panel||closing.current)return;audio.current?.ui("close");resume();
   if(!motion||!sheet){setPanel(null);return;}
   closing.current=true;dialog.current?.setAttribute("data-state","closing");
   gsap.to(sheet,{y:26,opacity:0,scale:.985,duration:.32,ease:"power2.in",onComplete:()=>{closing.current=false;setPanel(null);}});
@@ -83,7 +87,7 @@ export default function CozyPortfolio(){
  useEffect(()=>{const query=matchMedia("(prefers-reduced-motion: reduce)");function sync(){setMotion(!query.matches);}query.addEventListener("change",sync);const frame=requestAnimationFrame(()=>{sync();const linked=deepLinks[window.location.hash];if(linked)setPanel(linked);});function visibility(){audio.current?.visibility();}document.addEventListener("visibilitychange",visibility);return()=>{cancelAnimationFrame(frame);query.removeEventListener("change",sync);document.removeEventListener("visibilitychange",visibility);audio.current?.dispose();if(timer.current)clearTimeout(timer.current);};},[]);
  useEffect(()=>{
   if(!visible||!container.current)return;let cancelled=false,instance:WorldEngine|null=null;
-  import("./world/engine").then(({createWorld})=>{if(cancelled||!container.current)return;try{instance=createWorld(container.current,{action:(action,point)=>{audio.current?.tick(point,action);actionRef.current(action);},target:name=>setTarget(name),ready:()=>setReady(true),fail:()=>setFailed(true),active:setActive,location:setLocation,notice:announce,listener:(p,f,moving,where)=>audio.current?.listener(p,f,moving,where),screen:s=>{if(s)audio.current?.ui("boot");setSeat(s);if(!s)setSitting(false);},rtx:setSamples,cue:(kind,at)=>{if(kind==="hover")audio.current?.ui("hover");else audio.current?.cue(kind,at);}},options.current);engine.current=instance;if(process.env.NODE_ENV!=="production")(window as unknown as {__world?:WorldEngine}).__world=instance;}catch(error){console.error(error);setFailed(true);}}).catch(()=>{if(!cancelled)setFailed(true);});
+  import("./world/engine").then(({createWorld})=>{if(cancelled||!container.current)return;try{instance=createWorld(container.current,{action:(action,point)=>{audio.current?.tick(point,action);actionRef.current(action);},target:name=>setTarget(name),ready:()=>setReady(true),fail:()=>setFailed(true),active:(on,byUser)=>{setActive(on);if(on)setPaused(false);else if(byUser)setPaused(true);},progress:(value,label)=>setProgress({value,label}),stats:(fps,ms,scale)=>statsBus.dispatchEvent(new CustomEvent("stats",{detail:{fps,ms,scale}})),location:setLocation,notice:announce,listener:(p,f,moving,where,doors)=>audio.current?.listener(p,f,moving,where,doors),screen:s=>{if(s)audio.current?.ui("boot");setSeat(s);if(!s)setSitting(false);},rtx:setSamples,cue:(kind,at)=>{if(kind==="hover")audio.current?.ui("hover");else audio.current?.cue(kind,at);}},options.current);engine.current=instance;if(process.env.NODE_ENV!=="production")(window as unknown as {__world?:WorldEngine}).__world=instance;}catch(error){console.error(error);setFailed(true);}}).catch(()=>{if(!cancelled)setFailed(true);});
   return()=>{cancelled=true;instance?.dispose();engine.current=null;};
  },[visible]);
  // The paper rises in, then its contents settle line by line; switching sections restaggers the new content.
@@ -98,7 +102,8 @@ export default function CozyPortfolio(){
    }
   }else if(d.open)d.close();
  },[panel,motion]);
- const idle=visible&&ready&&!active&&!panel&&!scope&&!sitting;
+ const idle=visible&&ready&&!active&&!panel&&!scope&&!sitting&&(!entered||paused);
+ const resting=visible&&ready&&entered&&!paused&&!active&&!panel&&!scope&&!sitting&&!controls&&!spotify;
  // Entry choreography: words rise from their baseline, then the supporting lines follow.
  useEffect(()=>{
   const el=entry.current;if(!el||!idle||!motion)return;
@@ -108,7 +113,7 @@ export default function CozyPortfolio(){
   return()=>{tl.kill();};
  },[idle,entered,motion]);
  useEffect(()=>{const el=chip.current;if(!el)return;const x=gsap.quickTo(el,"x",{duration:.38,ease:"power3.out"}),y=gsap.quickTo(el,"y",{duration:.38,ease:"power3.out"});chipMove.current=(cx,cy)=>{x(cx);y(cy);};},[]);
- async function enter(drag=false){setEntered(true);audio.current?.ui("enter");await engine.current?.enter(touch?"touch":drag?"drag":"pointer");}
+ async function enter(drag=false){setEntered(true);setPaused(false);audio.current?.ui("enter");lastMode.current=touch?"touch":drag?"drag":"pointer";await engine.current?.enter(lastMode.current);}
  function reading(){engine.current?.pause();setClassic(true);}
  function world(){setFailed(false);setClassic(false);setReady(false);setActive(false);setEntered(false);}
  function joystick(e:ReactPointerEvent<HTMLDivElement>){const rect=e.currentTarget.getBoundingClientRect();const dx=(e.clientX-rect.left-rect.width/2)/42,dy=(e.clientY-rect.top-rect.height/2)/42,length=Math.max(1,Math.hypot(dx,dy));engine.current?.setStick(dx/length,dy/length);setStick({x:dx/length*33,y:dy/length*33});}
@@ -116,15 +121,17 @@ export default function CozyPortfolio(){
   <a href="#portfolio-content" className={styles.skip} onClick={reading}>Skip to accessible portfolio</a>
   {visible&&<div className={styles.scene} ref={container}/>}
   {visible&&<div className={styles.scrim} data-hidden={active||Boolean(panel)} aria-hidden="true"/>}
-  <header className={styles.header}><Link href="/" className={styles.signature}>DY<span>/</span></Link><div className={styles.location}><span>DEEPANSHU’S WORLD</span><strong key={location}>{roomNames[location]}</strong></div><nav aria-label="Portfolio shortcuts"><button onClick={()=>open("projects")}>Portfolio index <span aria-hidden="true">↗</span></button><button onClick={()=>open("contact")}>Contact</button><button onClick={()=>{engine.current?.pause();}} className={styles.pause} disabled={!active}>Pause</button></nav></header>
+  <header className={styles.header}><Link href="/" className={styles.signature}>DY<span>/</span></Link><div className={styles.location}><span>DEEPANSHU’S WORLD</span><strong key={location}>{roomNames[location]}</strong></div><nav aria-label="Portfolio shortcuts"><button onClick={()=>open("projects")}>Portfolio index <span aria-hidden="true">↗</span></button><button onClick={()=>open("contact")}>Contact</button><button onClick={()=>{engine.current?.pause(true);}} className={styles.pause} disabled={!active}>Pause</button></nav></header>
   {visible&&<main className={styles.exploration}>
-   {!ready&&<div className={styles.loading} role="status"><span className={styles.loadingLine} aria-hidden="true"/>Opening the door…<small>Your portfolio is already available in the index.</small></div>}
+   {!ready&&<div className={styles.loading} role="status" aria-live="polite"><span>Opening the door…</span><div className={styles.progress} role="progressbar" aria-label="Loading the world" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress.value*100)}><i style={{transform:`scaleX(${progress.value})`}}/></div><span className={styles.progressLabel}><b>{String(Math.round(progress.value*100)).padStart(2,"0")}%</b>{progress.label}</span><small>Your portfolio is already available in the index.</small></div>}
+   {resting&&<button className={styles.resume} onClick={()=>void enter(lastMode.current==="drag")}><span>Click to keep exploring</span><small>Esc pauses</small></button>}
    {idle&&<div className={styles.entry} ref={entry}><span className={styles.eyebrow} data-in>{entered?"TAKE YOUR TIME":"A PLACE TO GET A LITTLE LOST"}</span><h1><Words text={entered?"Make yourself at home.":"Come on in."}/></h1><p data-in>{entered?"Your world is right where you left it.":"A quiet room. A few unfinished ideas. A whole world to explore."}</p><div className={styles.entryActions} data-in><Magnetic><button className={styles.enterButton} onClick={()=>void enter()}><span>{entered?"Continue exploring":"Enter my world"}</span><i aria-hidden="true"><b>→</b><b>→</b></i></button></Magnetic><div className={styles.entryLinks}>{!touch&&<button onClick={()=>void enter(true)}>Explore without mouse capture</button>}<button onClick={reading}>Read the portfolio instead</button></div></div><div className={styles.instructions} data-in>{touch?<><span>Tap anything in the room</span><span>Enter to walk with the joystick</span></>:<><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</span><span><kbd>E</kbd> interact</span><span><kbd>Space</kbd> jump</span><span><kbd>Esc</kbd> pause</span></>}</div></div>}
    {idle&&!touch&&<div className={styles.hoverHint} aria-hidden="true"><i/>Hover the room · click anything that lights up</div>}
    {active&&<><span className={styles.crosshair} data-target={Boolean(target)} aria-hidden="true"/><div className={styles.interaction} aria-live="polite">{target&&<><kbd>E</kbd><span>{target}</span></>}</div><div className={styles.controlHint}>{touch?"Drag to look around":"WASD · walk     E · interact     Esc · pause"}</div></>}
    {active&&touch&&<div className={styles.touchControls}><div role="group" aria-label="Movement joystick" className={styles.joystick} onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId);joystick(e);}} onPointerMove={e=>{if(e.currentTarget.hasPointerCapture(e.pointerId))joystick(e);}} onPointerUp={()=>{engine.current?.setStick(0,0);setStick({x:0,y:0});}} onPointerCancel={()=>{engine.current?.setStick(0,0);setStick({x:0,y:0});}}><span style={{transform:`translate(${stick.x}px,${stick.y}px)`}}/></div><button className={styles.touchInteract} disabled={!target} onClick={()=>void engine.current?.interact()} aria-label="Interact with nearby object">E</button></div>}
   </main>}
   <div className={styles.chip} ref={chip} data-visible={idle&&Boolean(target)} aria-hidden="true"><span>{target}</span><b>↗</b></div>
+  {visible&&ready&&prefs.fps&&<FpsMeter/>}
   {visible&&rtx&&samples!==0&&!seat&&<div className={styles.rtxBadge} role="status" data-warming={samples<0}><i/>{samples<0?"Warming up the ray tracer":`Ray traced · ${samples} samples`}<small>{samples<0?"first run can take a minute · cached after":"move to explore again"}</small></div>}
   {!active&&<aside className={styles.utilities}>{!touch&&<button onClick={()=>setRtx(v=>!v)} aria-pressed={rtx} title="Path-traced lighting while you stand still"><b className={styles.rtxMark} data-on={rtx}>RTX</b>{rtx?"on":"off"}</button>}<button onClick={toggleSound} aria-pressed={sound} data-sound-toggle><i className={styles.meter} data-on={sound} aria-hidden="true"><b/><b/><b/></i>Sound {sound?"on":"off"}</button><button onClick={()=>{setControls(true);audio.current?.ui("sheet");}} aria-expanded={controls} className={styles.controlsButton}><i aria-hidden="true"><b/><b/><b/></i>Controls</button></aside>}
   <section id="portfolio-content" className={styles.classic}><span className={styles.eyebrow}>DEEPANSHU YADAV / PORTFOLIO</span><h1>Useful things.<br/>Thoughtfully built.</h1>{failed&&<p>The 3D world couldn’t open on this device. All of my work is available here.</p>}<Content section="about"/><Content section="projects"/><Content section="skills"/><Content section="experience"/><Content section="profile"/><Content section="contact"/><button className={styles.enterButton} onClick={world}><span>Try the world again</span><i aria-hidden="true"><b>↗</b><b>↗</b></i></button></section>
@@ -132,10 +139,18 @@ export default function CozyPortfolio(){
   <dialog className={styles.dialog} ref={dialog} onCancel={e=>{e.preventDefault();close();}} onClose={()=>setPanel(null)} onClick={e=>{if(e.target===e.currentTarget)close();}} aria-labelledby="panel-title"><div className={styles.paper} ref={paper}><div className={styles.paperTop}><span>D/Y — WORKSPACE / {panel?.startsWith("project")?"PROJECT TERMINAL":"FIELD NOTES"}</span><button aria-label="Close information panel" onClick={close}>×</button></div>{panel&&<Content key={panel} section={panel} onSelect={setPanel} motion={motion}/>}<div className={styles.paperBottom}><button onClick={close}>Back to the world <span aria-hidden="true">↗</span></button></div></div></dialog>
   <ControlCentre open={controls} onClose={()=>setControls(false)} prefs={prefs} setPref={setPref} weather={weather} setWeather={chooseWeather} weatherMode={weatherMode} live={live} usePrecise={usePreciseLocation} precise={Boolean(precise)} lamp={lamp} setLamp={setLamp} motion={motion} setMotion={setMotion} quality={quality} setQuality={setQuality} rtx={rtx} setRtx={setRtx} sound={sound} toggleSound={()=>void toggleSound()} go={go} touch={touch}/>
   {spotify&&<MusicPlayer getAudio={getAudio} onClose={()=>setSpotify(false)}/>}
-  {scope&&<Telescope motion={motion} onClose={()=>setScope(false)}/>}
-  {seat&&<Computer seat={seat} motion={motion} onExit={()=>engine.current?.stand()}/>}
+  {scope&&<Telescope motion={motion} onClose={()=>{setScope(false);resume();}}/>}
+  {seat&&<Computer seat={seat} motion={motion} onExit={()=>{engine.current?.stand();resume();}}/>}
   <noscript><style>{`.${styles.classic}{display:block!important}.${styles.exploration},.${styles.utilities},.${styles.scrim}{display:none!important}`}</style></noscript>
  </div>;
+}
+/** Frame rate, frame time and the dynamic resolution scale, updated twice a second outside React's main tree. */
+const statsBus=new EventTarget();
+function FpsMeter(){
+ const [s,setS]=useState<{fps:number;ms:number;scale:number}|null>(null);
+ useEffect(()=>{const on=(e:Event)=>setS((e as CustomEvent).detail);statsBus.addEventListener("stats",on);return()=>statsBus.removeEventListener("stats",on);},[]);
+ if(!s)return null;
+ return <div className={styles.fps} data-tone={s.fps>=50?"good":s.fps>=30?"ok":"low"} aria-hidden="true"><b>{s.fps}</b> FPS<span>{s.ms.toFixed(1)} ms</span><span>{Math.round(s.scale*100)}% res</span></div>;
 }
 function Content({section,onSelect,motion=true}:{section:Panel;onSelect?:(panel:Panel)=>void;motion?:boolean}){
   const titleId=onSelect?"panel-title":`content-${section}`;

@@ -4,7 +4,7 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import { cushion, mesh, lathe, rod, ceilingFan } from "./furniture";
 import { projects, skills } from "./content";
 import { type Area, colors as c, box, sphere, cylinder, tube, group, sign, plant, interactive, canvasTexture, disposeObject } from "./objects";
-import { fabric, ceramic, metal, emissive, floorboards, rugTexture, weave } from "./materials";
+import { fabric, ceramic, metal, emissive, floorboards, rugTexture, weave, windify } from "./materials";
 
 
 export function createBedroom(): Area {
@@ -31,7 +31,7 @@ export function createBedroom(): Area {
   for(const x of [-1.68,0,1.68])box(windowGroup,[.095,2.68,.18],[x,0,0],c.edge);
   for(const y of [-1.34,0,1.34])box(windowGroup,[3.45,.085,.18],[0,y,0],c.edge);
   box(windowGroup,[3.7,.14,.54],[0,-1.37,.12],c.cream);
-  const curtainMaterial=fabric("#dccfb4",.95);curtainMaterial.side=T.DoubleSide;
+  const curtainMaterial=windify(fabric("#dccfb4",.95),{kind:"cloth",top:1.35,height:2.7,amp:.012});curtainMaterial.side=T.DoubleSide;
   const curtains:T.Mesh[]=[];
   for(const x of [-3.46,-.42]) {const geometry=new T.PlaneGeometry(.42,2.7,28,14);const a=geometry.attributes.position;for(let i=0;i<a.count;i++)a.setZ(i,Math.sin(a.getX(i)*52)*.042+Math.sin(a.getX(i)*17+a.getY(i)*.8)*.012);geometry.computeVertexNormals();const mesh=new T.Mesh(geometry,curtainMaterial);mesh.position.set(x,2.46,-2.99);mesh.castShadow=true;mesh.userData.dynamic=true;root.add(mesh);curtains.push(mesh);}
   cylinder(root,.022,.022,3.72,[-1.94,3.9,-2.97],brass).rotation.z=Math.PI/2;

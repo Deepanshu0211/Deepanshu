@@ -1,6 +1,6 @@
 import * as T from "three";
 import { type Area, colors as c, box, sphere, cylinder, group, sign, plant, interactive, leafGeometry } from "./objects";
-import { fabric, ceramic, metal, emissive, surface, mottle, leafTexture, weave } from "./materials";
+import { fabric, ceramic, metal, emissive, surface, mottle, leafTexture, weave, windify } from "./materials";
 import { chair, table, chaiGlass, place, mesh, lathe, rod, cushion, finishes } from "./furniture";
 import { Verlet, RopeView } from "./rope";
 import { MOON_DIRECTION } from "./sky";
@@ -24,7 +24,7 @@ export function createBalcony(): Area {
   for (const z of [-3, 3]) box(root, [.14, 2.95, .14], [-.2, 1.47, z], pergolaWood, .01);
   box(root, [.12, .2, 6.4], [-.2, 2.95, 0], pergolaWood, .01); box(root, [.12, .2, 6.4], [-3.86, 2.95, 0], pergolaWood, .01);
   for (let z = -3; z <= 3.01; z += .5) box(root, [3.9, .14, .07], [-2.05, 3.1, z], pergolaWood, .008);
-  const vine = [new T.MeshStandardMaterial({ color: "#4f6b38", map: leafTexture(), roughness: .55, side: T.DoubleSide }), new T.MeshStandardMaterial({ color: "#6b8a47", map: leafTexture(), roughness: .55, side: T.DoubleSide })];
+  const vine = ["#4f6b38", "#6b8a47"].map(color => windify(new T.MeshStandardMaterial({ color, map: leafTexture(), roughness: .55, side: T.DoubleSide }), { kind: "flutter", amp: .018 }));
   const bloom = new T.MeshStandardMaterial({ color: "#d23f86", roughness: .6 });
   for (let i = 0; i < 140; i++) {
     const t = i / 140, x = -3.8 + ((i * 37) % 100) / 100 * 3.7, z = -3 + ((i * 61) % 100) / 100 * 6, y = 3.18 + ((i * 13) % 7) * .012;
@@ -62,7 +62,7 @@ export function createBalcony(): Area {
   const pinMats = ["#d23f3f", "#2d3a6b", "#e0a526"].map(color => new T.MeshStandardMaterial({ color, roughness: .5 }));
   [["#b4532a", .45, .7], ["#f2efe8", .55, .45], ["#2d3a6b", .4, .75], ["#e0a526", .7, .35], ["#2f4f43", .35, .55]].forEach(([color, w, h], i) => {
     const geometry = new T.PlaneGeometry(w as number, h as number, 8, 8); geometry.translate(0, -(h as number) / 2, 0); const a = geometry.attributes.position; for (let k = 0; k < a.count; k++) a.setZ(k, Math.sin(a.getX(k) * 9) * .015);
-    geometry.computeVertexNormals(); const cloth = fabric(color as string, .95); cloth.side = T.DoubleSide;
+    geometry.computeVertexNormals(); const cloth = windify(fabric(color as string, .95), { kind: "cloth", top: 0, height: h as number, amp: .035 }); cloth.side = T.DoubleSide;
     const piece = new T.Mesh(geometry, cloth); piece.castShadow = true; piece.userData.dynamic = true; root.add(piece);
     const start = 3 + i * 5, span = Math.max(2, Math.round((w as number) / .103)), ia = line[start], ib = line[Math.min(line.length - 2, start + span)];
     sim.inv[ia] = sim.inv[ib] = .35;

@@ -218,3 +218,31 @@ export function projectSurfaces(root: T.Object3D) {
     uv.needsUpdate = true; object.userData.projected = true;
   });
 }
+
+/** Shared wind clock and gust strength (the engine advances them each frame). */
+export const wind = { windTime: { value: 0 }, windStrength: { value: 1 } };
+type WindShape = { kind: "leaf"; origin: T.Vector3 | (() => T.Vector3); reach: number; amp: number } | { kind: "flutter"; amp: number } | { kind: "cloth"; top: number; height: number; amp: number };
+/**
+ * Wind in the vertex shader, so it costs no draw calls and survives geometry batching:
+ * leaves bend more the further they are from their pot, a vine flutters in place, and cloth
+ * ripples along its surface, pinned at the top and freest at the hem.
+ */
+export function windify<M extends T.MeshStandardMaterial>(material: M, shape: WindShape): M {
+  const own = { windAmp: { value: shape.amp }, windOrigin: { value: new T.Vector3() }, windReach: { value: shape.kind === "leaf" ? shape.reach : 1 }, windTop: { value: shape.kind === "cloth" ? shape.top : 0 }, windHeight: { value: shape.kind === "cloth" ? shape.height : 1 } };
+  const motion = shape.kind === "cloth"
+    ? `float pin = clamp((windTop - transformed.y) / windHeight, 0.0, 1.0);
+       float ripple = sin(windTime * 2.6 + transformed.x * 7.0 - transformed.y * 3.0) * .6 + sin(windTime * 4.3 + transformed.x * 13.0 + transformed.y * 5.0) * .4;
+       transformed += objectNormal * ripple * windAmp * pin * pin * windStrength;`
+    : `vec3 wp = (modelMatrix * vec4(transformed, 1.0)).xyz;
+       float reach = ${shape.kind === "leaf" ? "smoothstep(0.0, windReach, distance(wp, windOrigin))" : "1.0"};
+       vec3 sway = vec3(sin(windTime * 1.3 + wp.x * 1.7 + wp.z * .9), 0.0, cos(windTime * 1.1 + wp.z * 1.9 + wp.x * .6)) * .6
+                 + vec3(sin(windTime * 5.3 + wp.x * 11.0 + wp.y * 7.0), sin(windTime * 6.1 + wp.z * 9.0) * .5, cos(windTime * 4.7 + wp.y * 13.0)) * .4;
+       transformed += sway * windAmp * reach * windStrength;`;
+  material.onBeforeCompile = shader => {
+    if (shape.kind === "leaf") own.windOrigin.value.copy(typeof shape.origin === "function" ? shape.origin() : shape.origin);
+    Object.assign(shader.uniforms, wind, own);
+    shader.vertexShader = "uniform float windTime, windStrength, windAmp, windReach, windTop, windHeight; uniform vec3 windOrigin;\n" + shader.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>\n{ ${motion} }`);
+  };
+  material.customProgramCacheKey = () => "wind-" + shape.kind;
+  return material;
+}
