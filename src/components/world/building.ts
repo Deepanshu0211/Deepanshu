@@ -2,7 +2,7 @@ import * as T from "three";
 import { Octree } from "three/addons/math/Octree.js";
 import { Capsule } from "three/addons/math/Capsule.js";
 import { box, group, sign, colors as c, interactive, batchScenery, type Location } from "./objects";
-import { floorboards, surface, tiles, projected, metal } from "./materials";
+import { surface, tiles, projected, metal, herringbone, weave } from "./materials";
 
 // A fourth-floor flat: bedroom, living room, kitchen, study and an open balcony. Room ids are stable
 // (they key lazy loading and saved state); the labels are what a visitor sees.
@@ -18,10 +18,21 @@ export function createBuilding(){
  const solid=(size:number[],pos:number[])=>{const mesh=new T.Mesh(new T.BoxGeometry(size[0],size[1],size[2]));mesh.position.set(pos[0],pos[1],pos[2]);colliders.add(mesh);return mesh;};
  const doorWood=surface("#8a5a36"),panelWood=surface("#7b4a2b"),brass=metal("#b0925f",.3),frameWood=surface("#3e2618");
  const glass=new T.MeshPhysicalMaterial({color:"#dfeceb",transparent:true,opacity:.14,roughness:.03,depthWrite:false});
- function wall(size:number[],pos:number[],color=c.wall){box(root,size,pos,color,0);solid(size,pos);}
+ // Every room has its own paint (jewel tones after the reference rooms), so a wall shared by two rooms is drawn as
+ // two half-thickness skins, each painted for the room on its side. Collision stays one solid box.
+ const paint:Record<Location|"outside",T.Material>={
+  bedroom:surface("#5b6370",.9,"plaster"),archive:surface("#1f4a5b",.9,"plaster"),workshop:surface("#a9bfb3",.9,"plaster"),
+  library:projected(new T.MeshStandardMaterial({color:"#1d6a6c",bumpMap:weave(),bumpScale:2.2,roughness:.92}),.35), // grasscloth
+  rooftop:surface(c.wall),vault:surface("#22473a",.9,"plaster"),outside:surface(c.wall)};
+ const roomAt=(x:number,z:number):Location|"outside"=>x<-4||x>20||z<-3.25||z>9.75?"outside":x<4?(z<3.25?"bedroom":x<0?"outside":"vault"):z>3.25?(x<12?"library":"rooftop"):x<12?"archive":"workshop";
+ function skin(size:number[],pos:number[]){
+  const across=size[0]<=.2?0:size[2]<=.2?2:-1;if(across<0){box(root,size,pos,c.wall,0);return;}
+  for(const side of [-1,1]){const s=[...size],p=[...pos],probe=[...pos];s[across]/=2;p[across]+=side*size[across]/4;probe[across]+=side*.4;box(root,s,p,paint[roomAt(probe[0],probe[2])],0);}
+ }
+ function wall(size:number[],pos:number[],color?:string){if(color)box(root,size,pos,color,0);else skin(size,pos);solid(size,pos);}
  // A wall with real window openings: plaster pieces around each hole, a timber frame, glass and a sill. Collision stays whole.
  function windowWall(axis:"x"|"z",fixed:number,from:number,to:number,openings:Opening[]){
-  const seg=(a:number,b:number,y0:number,y1:number)=>{if(b-a<.01||y1-y0<.01)return;const mid=(a+b)/2,y=(y0+y1)/2;box(root,axis==="z"?[b-a,y1-y0,.18]:[.18,y1-y0,b-a],axis==="z"?[mid,y,fixed]:[fixed,y,mid],c.wall,0);};
+  const seg=(a:number,b:number,y0:number,y1:number)=>{if(b-a<.01||y1-y0<.01)return;const mid=(a+b)/2,y=(y0+y1)/2;skin(axis==="z"?[b-a,y1-y0,.18]:[.18,y1-y0,b-a],axis==="z"?[mid,y,fixed]:[fixed,y,mid]);};
   let cursor=from;
   for(const [a,b,y0,y1] of openings){
    seg(cursor,a,0,4.4);seg(a,b,0,y0);seg(a,b,y1,4.4);cursor=b;
@@ -71,11 +82,12 @@ export function createBuilding(){
  doorway("x",12,3.25,9.75,7.2,"library-rooftop","rooftop");
  const floors:Record<Location,T.Material>={
   bedroom:doorWood,
-  archive:projected(new T.MeshPhysicalMaterial({color:"#c7a27c",map:floorboards(),bumpMap:floorboards(),bumpScale:1.4,roughness:.5,clearcoat:.3,clearcoatRoughness:.4}),2.1),
+  // Herringbone parquet in the living rooms, as in the reference.
+  archive:projected(new T.MeshPhysicalMaterial({color:"#a87a52",map:herringbone(),bumpMap:herringbone(),bumpScale:1.2,roughness:.5,clearcoat:.3,clearcoatRoughness:.4}),1.8),
   workshop:projected(new T.MeshPhysicalMaterial({map:tiles("cement"),roughness:.55,clearcoat:.35,clearcoatRoughness:.3}),1),
-  library:projected(new T.MeshPhysicalMaterial({color:"#8f6a4c",map:floorboards(),bumpMap:floorboards(),bumpScale:1.4,roughness:.5,clearcoat:.25,clearcoatRoughness:.45}),2.4),
+  library:projected(new T.MeshPhysicalMaterial({color:"#8a5f3e",map:herringbone(),bumpMap:herringbone(),bumpScale:1.2,roughness:.5,clearcoat:.3,clearcoatRoughness:.4}),1.8),
   rooftop:projected(new T.MeshPhysicalMaterial({map:tiles("kota"),bumpMap:tiles("kota"),bumpScale:.6,roughness:.62,clearcoat:.15}),2.4),
-  vault:projected(new T.MeshPhysicalMaterial({color:"#6e4b35",map:floorboards(),bumpMap:floorboards(),bumpScale:1.4,roughness:.55,clearcoat:.2,clearcoatRoughness:.5}),2.4),
+  vault:projected(new T.MeshPhysicalMaterial({color:"#6e4b35",map:herringbone(),bumpMap:herringbone(),bumpScale:1.2,roughness:.5,clearcoat:.3,clearcoatRoughness:.4}),1.8),
  };
  // Every room light hangs from a visible fitting: a flush-mount opal dome on a brass rim.
  const lamps:Record<Exclude<Location,"vault">,[number,number,number]>={bedroom:[1.5,4.05,.4],archive:[6.6,4.05,1.2],workshop:[16,4.05,-1.3],library:[8,4.05,5.6],rooftop:[16,2.6,3.5]};
@@ -84,14 +96,14 @@ export function createBuilding(){
    const [x,z]=room.center,w=name==="vault"?4:8;
    if(name!=="bedroom")box(root,[w-.05,.045,6.45],[x,0,z],floors[name],0);
    // The hidden room has no ceiling fitting: its own lamps stay on (vault.ts).
-   if(name==="vault"){wall([w,.16,6.5],[x,4.44,z],"#f3eee4");continue;}
+   if(name==="vault"){wall([w,.16,6.5],[x,4.44,z],"#f2efe8");continue;}
    const light=new T.PointLight("#ffd3a0",8,name==="rooftop"?7:9,2);light.position.set(...lamps[name]);root.add(light);lights.push(light);
    if(name==="rooftop")continue;
    const [lx,,lz]=lamps[name];const dome=new T.Mesh(new T.SphereGeometry(.24,32,12,0,Math.PI*2,Math.PI/2,Math.PI/2),opal);dome.scale.y=.45;dome.position.set(lx,4.36,lz);root.add(dome);
    const rim=new T.Mesh(new T.TorusGeometry(.245,.012,8,48),brass);rim.rotation.x=Math.PI/2;rim.position.set(lx,4.355,lz);root.add(rim);
-   wall([8,.16,6.5],[x,4.44,z],"#f3eee4");
+   wall([8,.16,6.5],[x,4.44,z],name==="archive"?"#1f4a5b":"#f2efe8"); // the living room's ceiling is painted with its walls
    if(name==="bedroom")for(const bx of [-3.2,0,3.2])box(root,[.14,.16,6.5],[x+bx,4.28,z],c.edge);
-   else for(const [sx,sz,px,pz] of [[7.8,.08,0,-3.12],[7.8,.08,0,3.12],[.08,6.3,-3.92,0],[.08,6.3,3.92,0]])box(root,[sx,.1,sz],[x+px,4.31,z+pz],c.cream,.02); // cornice
+   else for(const [sx,sz,px,pz] of [[7.8,.08,0,-3.12],[7.8,.08,0,3.12],[.08,6.3,-3.92,0],[.08,6.3,3.92,0]])box(root,[sx,.1,sz],[x+px,4.31,z+pz],"#f2efe8",.02); // white cornice
  }
  // Balcony parapet and railing are real barriers; the balcony draws them.
  solid([.2,1.4,6.6],[20,.7,6.5]);solid([8.2,1.4,.2],[16,.7,9.75]);

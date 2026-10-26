@@ -1,7 +1,7 @@
 import * as T from "three";
 import { skills, profile, experience } from "./content";
 import { type Area, colors as c, box, sphere, cylinder, group, sign, plant, interactive, canvasTexture, batchScenery } from "./objects";
-import { fabric, ceramic, metal, emissive } from "./materials";
+import { fabric, ceramic, metal, emissive, geoRug } from "./materials";
 import { table, chair, armchair, rug, curtains, pendant, frame, books, mug, place, mesh, lathe, rod, finishes } from "./furniture";
 
 // A simple earth for the globe: ocean, soft continents, a graticule.
@@ -17,7 +17,7 @@ function earth() {
 export function createStudy(): Area {
   const root = new T.Group(); let alive = true, open = 0, opening = 0;
   const walnut = finishes.walnut(), oak = finishes.oak();
-  rug(root, [0, 0, -.2], [2.8, 3.4], "#d9c9b0");
+  rug(root, [0, 0, -.2], [2.8, 3.4], "#ffffff", geoRug("#235f68", "#d6a640", "#d4673a", "#8fbfc4"));
   // Built-in library wall. Two eye-level shelves hold the skills, labelled on their spines. The middle two bays are
   // sliding panels: when a member signs in they part from the centre to either side, showing the hidden door.
   const shelf = place(root, [-3.7, 0, 0], Math.PI / 2), loose: T.Object3D[] = [];
@@ -70,9 +70,9 @@ export function createStudy(): Area {
   const deskLamp = place(root, [.72, .76, 3.05]); cylinder(deskLamp, .07, .08, .02, [0, .01, 0], finishes.brass(), 24); rod(deskLamp, [0, .02, 0], [0, .38, 0], .008, finishes.brass());
   lathe(deskLamp, [[.02, 0], [.06, -.01], [.1, -.12]], [0, .42, 0], new T.MeshPhysicalMaterial({ color: "#2f4f43", roughness: .35, clearcoat: .6, side: T.DoubleSide }), 32);
   const deskBulb = sphere(deskLamp, [.03, .03, .03], [0, .36, 0], emissive(c.amber, 3), 16);
-  curtains(root, [0, 1.98, 3.08], 2.8, 2.5, Math.PI, "#dccfb4");
+  curtains(root, [0, 1.98, 3.08], 2.8, 2.5, Math.PI, "#8fb3a3");
   // Reading corner: armchair, side table, a lamp and a stack of books.
-  armchair(root, [2.9, 0, -2.2], -.75, "#7a4b3a");
+  armchair(root, [2.9, 0, -2.2], -.75, "#9cbcae"); // sage velvet
   table(root, [2.2, 0, -2.85], [.45, .55, .45], walnut, walnut, true);
   books(root, [2.07, .55, -2.85], .25, 3).forEach(b => { b.rotation.z = Math.PI / 2; b.position.y = .03 + (b.position.x - .02) * .0; });
   const reading = place(root, [3.5, 0, -2.85]); cylinder(reading, .14, .15, .03, [0, .015, 0], metal("#2a2622", .45), 32); rod(reading, [0, .03, 0], [0, 1.45, 0], .012, metal("#2a2622", .45));
@@ -93,6 +93,8 @@ export function createStudy(): Area {
   const world = sphere(globe, [.18, .18, .18], [0, .82, 0], new T.MeshPhysicalMaterial({ map: earth(), roughness: .4, clearcoat: .8 }), 40); world.rotation.z = .41; world.userData.dynamic = true;
   // Wall art and light.
   const art = frame(root, [-1.9, 2.0, -3.12], 0, 1.3, .9, "#8c8070");
+  // A pair of brass picture sconces either side of it.
+  for (const x of [-2.82, -.98]) { const sconce = place(root, [x, 2.05, -3.1]); cylinder(sconce, .09, .09, .02, [0, 0, 0], finishes.brass(), 32).rotation.x = Math.PI / 2; rod(sconce, [0, 0, .01], [0, 0, .07], .008, finishes.brass()); sphere(sconce, [.035, .035, .035], [0, 0, .09], emissive(c.amber, 2.6), 16); }
   new T.TextureLoader().load("/images/hero-anime.jpg", map => { if (!alive) { map.dispose(); return; } map.colorSpace = T.SRGBColorSpace; const m = art.picture.material as T.MeshStandardMaterial; m.map = map; m.color.set("#fff"); m.needsUpdate = true; });
   // The profile wall: a framed profile card, three certificates and a GitHub card. Each opens the full profile.
   const card = canvasTexture(ctx => {

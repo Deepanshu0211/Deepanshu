@@ -1,6 +1,6 @@
 import * as T from "three";
 import { type Area, colors as c, box, cylinder, group, sign, interactive, canvasTexture } from "./objects";
-import { fabric, metal, emissive } from "./materials";
+import { fabric, metal, emissive, geoRug } from "./materials";
 import { table, chair, armchair, rug, pendant, frame, books, mug, place, rod, lathe, finishes } from "./furniture";
 
 // The hidden room behind the study bookshelf: a small members' den, reached through the locked door on its east wall.
@@ -8,7 +8,7 @@ import { table, chair, armchair, rug, pendant, frame, books, mug, place, rod, la
 // over x .5..2, z -.9..-.6 (keep that clear).
 export function createVault(): Area {
   const root = new T.Group(), walnut = finishes.walnut(), oak = finishes.oak();
-  rug(root, [-.4, 0, .1], [2.2, 3.2], "#c9a27a");
+  rug(root, [-.4, 0, .1], [2.2, 3.2], "#ffffff", geoRug("#2a4a3c", "#c9a43a", "#b8232a", "#7fa694"));
   // A painted board on the far wall, the first thing you see from the door.
   const board = canvasTexture(ctx => {
     ctx.fillStyle = "#24392f"; ctx.fillRect(0, 0, 900, 560); ctx.strokeStyle = "#c9a45c"; ctx.lineWidth = 6; ctx.strokeRect(26, 26, 848, 508);
@@ -29,7 +29,7 @@ export function createVault(): Area {
   lathe(lamp, [[.02, 0], [.06, -.01], [.1, -.12]], [0, .42, 0], new T.MeshPhysicalMaterial({ color: "#24392f", roughness: .35, clearcoat: .6, side: T.DoubleSide }), 32);
   cylinder(lamp, .03, .03, .04, [0, .36, 0], emissive(c.amber, 3), 16);
   // Two armchairs facing over a round table.
-  armchair(root, [-1.5, 0, -2.2], Math.PI / 2, "#2f4f43"); armchair(root, [.4, 0, -2.2], -Math.PI / 2, "#7a4b3a");
+  armchair(root, [-1.5, 0, -2.2], Math.PI / 2, "#c4a13f"); armchair(root, [.4, 0, -2.2], -Math.PI / 2, "#a4502b");
   table(root, [-.55, 0, -2.2], [.5, .5, .5], walnut, walnut, true);
   const chess = place(root, [-.55, .5, -2.2], .3); box(chess, [.3, .02, .3], [0, .01, 0], new T.MeshStandardMaterial({ color: "#e2d6bd", roughness: .6 }), .004);
   for (let i = 0; i < 6; i++) cylinder(chess, .012, .016, .05, [-.1 + (i % 3) * .1, .045, i < 3 ? -.1 : .1], new T.MeshStandardMaterial({ color: i < 3 ? "#1f1a17" : "#f1eadb", roughness: .4 }), 12);
@@ -66,7 +66,7 @@ export function createVault(): Area {
     update(time, delta, options) {
       cursor.visible = !options.motion || Math.floor(time * 1.6) % 2 === 0; // the terminal cursor blinks
       if (lit === goal) return; lit = options.motion ? Math.min(goal, lit + delta * .8) : goal;
-      glow[0].intensity = lit * 3.2; glow[1].intensity = lit * 1.6;
+      glow[0].intensity = lit * 5; glow[1].intensity = lit * 2.2; // brighter against the dark emerald walls
     },
   };
 }

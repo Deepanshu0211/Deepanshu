@@ -61,8 +61,8 @@ export function table(parent: T.Object3D, pos: number[], size: number[], top: T.
   box(g, [w - .16, .06, .02], [0, h - .08, d / 2 - .07], legs, .005); box(g, [w - .16, .06, .02], [0, h - .08, -d / 2 + .07], legs, .005);
   return g;
 }
-export function rug(parent: T.Object3D, pos: number[], size: number[], tint = "#ffffff") {
-  return box(parent, [size[0], .014, size[1]], [pos[0], (pos[1] ?? 0) + .03, pos[2]], new T.MeshStandardMaterial({ color: tint, map: rugTexture(), bumpMap: rugTexture(), bumpScale: 2, roughness: 1 }), .006);
+export function rug(parent: T.Object3D, pos: number[], size: number[], tint = "#ffffff", art: T.Texture = rugTexture()) {
+  return box(parent, [size[0], .014, size[1]], [pos[0], (pos[1] ?? 0) + .03, pos[2]], new T.MeshStandardMaterial({ color: tint, map: art, bumpMap: rugTexture(), bumpScale: 2, roughness: 1 }), .006);
 }
 export function arcLamp(parent: T.Object3D, pos: number[], turn: number) {
   const g = place(parent, pos, turn), steel = finishes.steel();

@@ -4,7 +4,7 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import { cushion, mesh, lathe, rod, ceilingFan } from "./furniture";
 import { projects, skills } from "./content";
 import { type Area, colors as c, box, sphere, cylinder, tube, group, sign, plant, interactive, canvasTexture, disposeObject } from "./objects";
-import { fabric, ceramic, metal, emissive, floorboards, rugTexture, weave, windify } from "./materials";
+import { fabric, ceramic, metal, emissive, surface, herringbone, rugTexture, weave, windify } from "./materials";
 
 
 export function createBedroom(): Area {
@@ -12,15 +12,16 @@ export function createBedroom(): Area {
   const plastic=new T.MeshPhysicalMaterial({color:"#1f1a17",roughness:.42,clearcoat:.3,clearcoatRoughness:.35});
   const aluminium=metal("#b3b6b2",.32), brass=metal("#a88a5c",.34), chrome=metal("#d6d8d6",.18);
   box(root,[8.3,.34,6.8],[0,-.2,0],c.edge,.1);
-  // Oiled oak floorboards, staggered and bevelled, under a light clear finish.
-  const floor=new T.MeshPhysicalMaterial({color:"#c09a76",map:floorboards(),bumpMap:floorboards(),bumpScale:1.4,roughness:.55,clearcoat:.22,clearcoatRoughness:.45});floor.userData.project=2.4;
+  // Herringbone oak parquet under a light clear finish, and slate-grey walls (the flat's jewel-toned scheme).
+  const floor=new T.MeshPhysicalMaterial({color:"#b0855c",map:herringbone(),bumpMap:herringbone(),bumpScale:1.2,roughness:.55,clearcoat:.22,clearcoatRoughness:.45});floor.userData.project=1.8;
+  const slate=surface("#5b6370",.9,"plaster");
   box(root,[7.92,.06,6.5],[0,.015,0],floor,0);
-  box(root,[.16,4.4,6.6],[-4,2.15,0],c.wall);
+  box(root,[.16,4.4,6.6],[-4,2.15,0],slate);
   // A real opening in the back wall, with three-dimensional mullions and city beyond it.
-  box(root,[8,1.2,.17],[0,.58,-3.25],c.wall);
-  box(root,[8,.57,.17],[0,4.04,-3.25],c.wall);
-  box(root,[.42,2.95,.17],[-3.79,2.44,-3.25],c.wall);
-  box(root,[4.3,2.95,.17],[1.86,2.44,-3.25],c.wall);
+  box(root,[8,1.2,.17],[0,.58,-3.25],slate);
+  box(root,[8,.57,.17],[0,4.04,-3.25],slate);
+  box(root,[.42,2.95,.17],[-3.79,2.44,-3.25],slate);
+  box(root,[4.3,2.95,.17],[1.86,2.44,-3.25],slate);
   box(root,[.12,.15,6.5],[-3.88,.18,0],c.cream);
   box(root,[8,.15,.12],[0,.18,-3.12],c.cream);
   box(root,[.21,.15,6.7],[-4,4.36,0],c.edge);
@@ -98,11 +99,11 @@ export function createBedroom(): Area {
   sphere(pet,[.044,.026,.05],[-.06,-.025,.08],ceramic(c.rust,.5));sphere(pet,[.044,.026,.05],[.06,-.025,.08],ceramic(c.rust,.5));
   // Seat, rug and bedding add tactile softness to the cutaway.
   cylinder(root,.035,.035,.52,[.6,.45,-.2],chrome);
-  const chair=interactive(group(root,[.6,0,-.2]),"chair","Turn the desk chair");chair.scale.y=.8;const upholstery=fabric(c.rust,.9);
+  const chair=interactive(group(root,[.6,0,-.2]),"chair","Turn the desk chair");chair.scale.y=.8;const upholstery=new T.MeshPhysicalMaterial({color:"#9a4824",roughness:.42,clearcoat:.35,clearcoatRoughness:.5,bumpMap:weave(),bumpScale:.2}); // cognac leather
   mesh(chair,cushion(.83,.17,.74,.35,0,.07),[0,.8,0],upholstery);mesh(chair,cushion(.84,.78,.16,.12,0,.07),[0,1.22,.37],upholstery).rotation.x=-.06;
   box(chair,[.5,.05,.4],[0,.69,0],plastic,.02);rod(chair,[0,.95,.3],[0,.72,.12],.025,plastic);
   for(let i=0;i<5;i++){const a=i*Math.PI*2/5;tube(chair,[[0,.23,0],[Math.sin(a)*.42,.14,Math.cos(a)*.42]],.03,chrome);sphere(chair,[.055,.055,.04],[Math.sin(a)*.42,.11,Math.cos(a)*.42],plastic);}
-  const rug=new T.MeshStandardMaterial({map:rugTexture(),bumpMap:rugTexture(),bumpScale:2.2,roughness:1});
+  const rug=new T.MeshStandardMaterial({color:"#cdc9c0",bumpMap:rugTexture(),bumpScale:2.2,roughness:1}); // pale grey flatweave
   box(root,[3.6,.018,2.36],[.23,.087,.92],rug,.008);
   const tassel=fabric(c.cream,1);for(let i=0;i<28;i++)for(const z of [-.29,2.12])box(root,[.018,.006,.11],[-1.45+i*.12,.083,z],tassel,0);
   const bed=group(root,[-2.79,0,.65]);box(bed,[1.92,.39,3.5],[0,.39,0],c.wood,.05);
@@ -110,8 +111,8 @@ export function createBedroom(): Area {
   mesh(bed,cushion(1.86,.2,2.22,.42,.011,.09),[0,.89,.56],fabric("#34467a",.92));
   box(bed,[1.96,1.15,.13],[0,.63,-1.78],c.wood,.05);
   const pillow=mesh(bed,cushion(1.2,.17,.6,.95,.004,.08),[0,.94,-1.12],fabric("#e3d6bc",.95));pillow.rotation.x=-.12;
-  mesh(bed,cushion(.62,.12,.42,.9,0,.06),[.35,.99,-.84],fabric(c.sage,.92)).rotation.set(-.25,.18,.06);
-  mesh(bed,cushion(1.9,.07,.52,.3,.006,.03),[0,1.0,1.32],fabric(c.rust,.92));
+  mesh(bed,cushion(.62,.12,.42,.9,0,.06),[.35,.99,-.84],fabric("#1f6b4a",.92)).rotation.set(-.25,.18,.06);
+  mesh(bed,cushion(1.9,.07,.52,.3,.006,.03),[0,1.0,1.32],fabric("#c9a43a",.92));
   // Floating knowledge shelf: every spine is a discoverable technology.
   const shelf=group(root,[1.95,2.38,-3]);
   for(const y of [0,.76]){box(shelf,[3.55,.07,.42],[0,y,0],c.wood,.015);for(const x of [-1.42,1.42])box(shelf,[.035,.22,.32],[x,y-.15,0],c.dark,.008);}

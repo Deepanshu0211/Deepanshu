@@ -110,6 +110,30 @@ export function floorboards() {
     }
   });
 }
+// Herringbone parquet: short planks at right angles in a zigzag, grain along each plank, every plank its own tone.
+// Laid at 45° on lattice periods that divide the tile (64 px across, 256 px along), so it repeats without a seam.
+export function herringbone() {
+  return texture("herringbone", 1024, ctx => {
+    const grain = woodGrain().image as HTMLCanvasElement, w = 64 / Math.SQRT2, L = 4 * w;
+    const along = ctx.createPattern(grain, "repeat")!, across = ctx.createPattern(grain, "repeat")!; across.setTransform(new DOMMatrix().rotate(90));
+    // Tone from the plank's place in one tile, so matching planks on opposite edges match.
+    const tone = (s: number, n: number, k: number) => { const h = Math.sin((((s % 4) + 4) % 4) * 127.1 + (((n % 16) + 16) % 16) * 311.7 + k * 74.7) * 43758.5; return 150 + (h - Math.floor(h)) * 52; };
+    const plank = (x: number, y: number, pw: number, ph: number, fill: CanvasPattern, t: number) => { ctx.fillStyle = fill; ctx.fillRect(x + 1, y + 1, pw - 2, ph - 2); ctx.fillStyle = `rgba(${t},${t * .74},${t * .52},.5)`; ctx.fillRect(x + 1, y + 1, pw - 2, ph - 2); };
+    ctx.fillStyle = "#1a120c"; ctx.fillRect(0, 0, 1024, 1024); ctx.save(); ctx.translate(512, 512); ctx.rotate(Math.PI / 4);
+    for (let s = -6; s <= 6; s++) for (let n = -20; n <= 20; n++) { const x = n * w + s * L, y = n * w - s * L; plank(x, y, L, w, along, tone(s, n, 0)); plank(x, y + w, w, L, across, tone(s, n, 1)); }
+    ctx.restore();
+  });
+}
+// A modern wool rug in the room's palette: a deep field, a soft circle and a bar of colour across a lighter band.
+export function geoRug(field: string, circle: string, bar: string, band: string) {
+  return texture(`georug-${field}-${circle}-${bar}-${band}`, 1024, (ctx, r) => {
+    ctx.fillStyle = field; ctx.fillRect(0, 0, 1024, 1024); ctx.fillStyle = band; ctx.fillRect(0, 560, 1024, 180);
+    ctx.fillStyle = circle; ctx.beginPath(); ctx.arc(600, 330, 230, 0, 7); ctx.fill();
+    ctx.fillStyle = bar; ctx.fillRect(250, 640, 360, 150); ctx.fillStyle = field; ctx.fillRect(690, 300, 26, 470);
+    for (let i = 0; i < 14000; i++) { const v = r() > .5 ? 255 : 0; ctx.fillStyle = `rgba(${v},${v},${v},.035)`; ctx.fillRect(r() * 1024, r() * 1024, 2, 3); }
+    ctx.strokeStyle = "rgba(0,0,0,.25)"; ctx.lineWidth = 18; ctx.strokeRect(9, 9, 1006, 1006);
+  });
+}
 // The view beyond the window: a soft sky, two depths of skyline, and a separate layer of lit windows.
 export function skyline(layer: "sky" | "far" | "near", lights = false) {
   // Lights share the building layer's seed, so every lit window sits on a real facade.

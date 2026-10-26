@@ -1,7 +1,7 @@
 import * as T from "three";
 import { projects } from "./content";
 import { type Area, colors as c, box, sphere, cylinder, sign, plant, interactive, canvasTexture } from "./objects";
-import { fabric, ceramic, metal, emissive, surface } from "./materials";
+import { fabric, ceramic, metal, emissive, surface, geoRug } from "./materials";
 import { sofa, armchair, table, rug, arcLamp, ceilingFan, frame, curtains, mug, bowlOfFruit, vase, books, place, mesh, lathe, cushion, finishes } from "./furniture";
 
 // Project posters drawn as typographic prints, so every project has artwork even without a screenshot.
@@ -21,10 +21,11 @@ function poster(name: string, tagline: string, category: string, background: str
 export function createLiving(): Area {
   const root = new T.Group(); let alive = true, catUntil = 0, clockAt = 0;
   const oak = finishes.oak(), walnut = finishes.walnut();
-  rug(root, [1.0, 0, -1.5], [3.2, 2.5]);
+  rug(root, [1.0, 0, -1.5], [3.2, 2.5], "#ffffff", geoRug("#1d5566", "#d8a93a", "#d0602f", "#5f9fae"));
   sofa(root, [-.4, 0, -1.5], Math.PI / 2, "#2d3a6b", 2.4);
-  const throwBlanket = mesh(root, cushion(.5, .035, .55, .25, .006, .015), [-.2, .585, -2.2], fabric(c.rust, .95)); throwBlanket.rotation.y = .18;
-  for (const [z, color] of [[-2.35, "#e3d6bc"], [-.7, c.rust]] as [number, string][]) mesh(root, cushion(.42, .14, .42, .95, 0, .05), [-.55, .74, z], fabric(color, .95)).rotation.set(0, z < -1 ? .2 : -.15, Math.PI / 2 + .32);
+  const throwBlanket = mesh(root, cushion(.5, .035, .55, .25, .006, .015), [-.2, .585, -2.2], fabric("#c9a43a", .95)); throwBlanket.rotation.y = .18;
+  // Jewel-toned cushions against the navy: emerald, coral and lacquer red.
+  for (const [z, color] of [[-2.35, "#1f6b4a"], [-1.5, "#d9786a"], [-.7, "#b8232a"]] as [number, string][]) mesh(root, cushion(.42, .14, .42, .95, 0, .05), [-.55, .74, z], fabric(color, .95)).rotation.set(0, z < -1 ? .2 : -.15, Math.PI / 2 + .32);
   // Coffee table with an everyday clutter of magazines, a mug, fruit and the portfolio book.
   table(root, [1.4, 0, -1.5], [.62, .42, 1.12], oak, walnut);
   const book = interactive(place(root, [1.35, .42, -1.85], .2), "projects", "Flip through the portfolio book");
@@ -56,7 +57,7 @@ export function createLiving(): Area {
   plant(tvUnit, [-1.0, .51, 0], .7); vase(tvUnit, [.95, .51, .05], "#c8bfae");
   books(tvUnit, [.45, .51, .02], .32, 4).forEach(b => { b.rotation.z = Math.PI / 2; b.position.y = .04; });
   // Reading corner and the household cat, asleep where the afternoon light lands.
-  armchair(root, [-2.9, 0, -2.4], 1.04, "#c99a3c");
+  armchair(root, [-2.9, 0, -2.4], 1.04, "#a4502b"); // cognac
   const cat = interactive(place(root, [-2.88, .54, -2.35], .6), "cat", "Pet Mishti, the cat");
   const fur = new T.MeshPhysicalMaterial({ color: "#c98a4b", roughness: .9, sheen: 1, sheenColor: "#f3cf9a", sheenRoughness: .5 });
   const body = sphere(cat, [.2, .1, .15], [0, .09, 0], fur); sphere(cat, [.085, .075, .08], [.17, .1, .06], fur);
@@ -71,6 +72,9 @@ export function createLiving(): Area {
   mesh(consoleTable, new T.TorusGeometry(.43, .018, 12, 64), [0, 1.55, -.11], finishes.brass());
   lathe(consoleTable, [[0, 0], [.1, 0], [.12, .04], [.1, .045], [.0, .02]], [-.35, .82, 0], ceramic("#2f4f43", .3));
   for (const x of [-.33, -.37]) box(consoleTable, [.05, .004, .02], [x, .86, .01], finishes.brass(), .002);
+  // A red lacquer gourd lamp under an emerald drum shade.
+  lathe(consoleTable, [[0, 0], [.07, 0], [.08, .03], [.05, .08], [.09, .16], [.06, .26], [.1, .34], [.04, .44], [.015, .47], [0, .47]], [-.02, .82, .02], ceramic("#b8232a", .18), 32);
+  const shade = fabric("#1f6b4a", .9); shade.side = T.DoubleSide; shade.emissive = new T.Color("#ffb766"); shade.emissiveIntensity = .25; cylinder(consoleTable, .13, .17, .22, [-.02, 1.39, .02], shade, 40).castShadow = false;
   const photo = interactive(place(consoleTable, [.3, .82, -.04], -.2), "about", "A family photo");
   const snapshot = frame(photo, [0, .12, 0], 0, .2, .26, "#9a8a70", walnut); snapshot.group.rotation.x = -.12;
   new T.TextureLoader().load("/images/about-anime.jpg", map => { if (!alive) { map.dispose(); return; } map.colorSpace = T.SRGBColorSpace; const m = snapshot.picture.material as T.MeshStandardMaterial; m.map = map; m.color.set("#fff"); m.needsUpdate = true; });
@@ -90,7 +94,7 @@ export function createLiving(): Area {
     const glow = new T.Mesh(new T.PlaneGeometry(.7, .14), emissive("#ffd9a0", .6)); glow.position.set(0, .64, .085); glow.rotation.x = .5; glow.visible = false; hang.add(glow);
   });
   // Window dressing, light and air.
-  const drapes = curtains(root, [0, 2.07, -3.02], 3.2, 2.7);
+  const drapes = curtains(root, [0, 2.07, -3.02], 3.2, 2.7, 0, "#c4a13f"); // mustard
   const fan = ceilingFan(root, [.6, 4.36, -1.0]);
   // The arc lamp stands at the sofa's end and throws a real pool of light over the seat.
   const lamp = arcLamp(root, [-.35, 0, -.02], Math.PI / 2);
