@@ -2,6 +2,7 @@ import * as T from "three";
 import { projects } from "./content";
 import { type Area, colors as c, box, sphere, cylinder, group, sign, plant, interactive, canvasTexture } from "./objects";
 import { fabric, ceramic, metal, emissive, surface, geoRug } from "./materials";
+import { Cloth } from "./cloth";
 import { sofa, armchair, table, rug, arcLamp, ceilingFan, frame, curtains, mug, bowlOfFruit, vase, books, place, mesh, lathe, cushion, finishes } from "./furniture";
 
 // Project posters drawn as typographic prints, so every project has artwork even without a screenshot.
@@ -59,7 +60,8 @@ export function createLiving(): Area {
   plant(tvUnit, [-1.0, .51, 0], .7); vase(tvUnit, [.95, .51, .05], "#c8bfae");
   books(tvUnit, [.45, .51, .02], .32, 4).forEach(b => { b.rotation.z = Math.PI / 2; b.position.y = .04; });
   // Reading corner and the household cat, asleep where the afternoon light lands.
-  armchair(root, [-2.9, 0, -2.4], 1.04, "#a4502b"); // cognac
+  // The cognac armchair seats one more.
+  perches.push({ id: "armchair-living", group: "armchair-living", at: group(interactive(armchair(root, [-2.9, 0, -2.4], 1.04, "#a4502b"), "sit:armchair-living", "Sit in the armchair"), [0, .5, .06]) });
   const cat = interactive(place(root, [-2.88, .54, -2.35], .6), "cat", "Pet Mishti, the cat");
   const fur = new T.MeshPhysicalMaterial({ color: "#c98a4b", roughness: .9, sheen: 1, sheenColor: "#f3cf9a", sheenRoughness: .5 });
   const body = sphere(cat, [.2, .1, .15], [0, .09, 0], fur); sphere(cat, [.085, .075, .08], [.17, .1, .06], fur);
@@ -96,7 +98,7 @@ export function createLiving(): Area {
     const glow = new T.Mesh(new T.PlaneGeometry(.7, .14), emissive("#ffd9a0", .6)); glow.position.set(0, .64, .085); glow.rotation.x = .5; glow.visible = false; hang.add(glow);
   });
   // Window dressing, light and air.
-  const drapes = curtains(root, [0, 2.07, -3.02], 3.2, 2.7, 0, "#c4a13f"); // mustard
+  const drapes = curtains(root, [0, 2.07, -3.02], 3.2, 2.7, 0, "#c4a13f").map(panel => new Cloth(panel, 28, 14)); // mustard
   const fan = ceilingFan(root, [.6, 4.36, -1.0]);
   // The arc lamp stands at the sofa's end and throws a real pool of light over the seat.
   const lamp = arcLamp(root, [-.35, 0, -.02], Math.PI / 2);
@@ -111,7 +113,7 @@ export function createLiving(): Area {
     update(time, delta, options) {
       if (options.motion) fan.blades.rotation.y -= delta * 4.4 * (options.fan ?? 1);
       body.scale.y = .1 * (1 + (options.motion ? Math.sin(time * 1.6) * .05 : 0)); const flick = Math.sin(time * .7) > .97; tail.rotation.z = 1.2 + (options.motion && (performance.now() < catUntil || flick) ? Math.sin(time * 8) * .25 : 0);
-      drapes.forEach((m, i) => m.rotation.y = options.motion ? Math.sin(time * .5 + i) * .04 : 0);
+      for (const d of drapes) d.step(delta, options);
       (lamp.bulb.material as T.MeshBasicMaterial).color.setScalar(options.weather === "day" ? 1.2 : 2.6); reading.intensity = options.weather === "day" ? .8 : 2.4;
       if (time - reelAt > 4.5 || reelIndex < 0) { reelAt = time; reelIndex = (reelIndex + 1) % projects.length; drawReel(reelIndex); }
       if (time - clockAt < 1 && clockAt) return; clockAt = time || .001;

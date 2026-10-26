@@ -6,7 +6,7 @@ import { surface, leafTexture, mottle, projectSurfaces, windify } from "./materi
 export type Action = "multiplayer" | "projects" | "skills" | "about" | "experience" | "contact" | "lamp" | "weather" | "sound" | "keyboard" | "drawer" | "pet" | "duck" | "lab" | "chair" | "cat" | "telescope" | "computer" | "laptop" | "profile" | "record" | "radio" | "fridge" | "kettle" | "globe" | "swing" | "secret" | "exit" | "shelf" | `sit:${string}` | `door:${string}` | `project:${string}` | `skill:${string}`;
 export type Weather = "rain" | "day" | "sunset" | "night";
 export type Location = "bedroom" | "archive" | "rooftop" | "workshop" | "library" | "vault";
-export interface WorldOptions { /** A song is playing on the record player. */ music?: boolean; motion: boolean; weather: Weather; lamp: boolean; quality: "auto" | "low"; fov?: number; sensitivity?: number; lights?: number; fan?: number; life?: boolean; ao?: boolean; bloom?: boolean; grain?: boolean; volume?: number; }
+export interface WorldOptions { /** A song is playing on the record player. */ music?: boolean; /** Where people stand (you and friends), for things they push aside: the curtains. */ bodies?: T.Vector3[]; motion: boolean; weather: Weather; lamp: boolean; quality: "auto" | "low"; fov?: number; sensitivity?: number; lights?: number; fan?: number; life?: boolean; ao?: boolean; bloom?: boolean; grain?: boolean; volume?: number; }
 export interface Area {
   root: T.Group;
   camera: [number, number, number];
@@ -26,7 +26,7 @@ export interface Area {
   /** Hide it again (the shelf closes on its timer). */
   conceal?: () => void;
   /** Places people sit, shared between friends: the hip point on the seat, facing its +z. A `sit:<group>` click takes the nearest free one. */
-  perches?: { id: string; group: string; at: T.Object3D }[];
+  perches?: { id: string; group: string; at: T.Object3D; /** "lie": lie down (the bed) instead of sitting. */ pose?: "lie" }[];
   /** True while something must keep moving even out of sight (the shelf sliding), so it is updated anyway. */
   busy?: () => boolean;
 }

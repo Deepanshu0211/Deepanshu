@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
 import type {WorldEngine} from "./world/engine";
+import {GESTURES,type Gesture} from "./world/gestures";
 import type {RoomAudio} from "./world/audio";
 import {Lobby,cleanCode,randomCode,type Player} from "./world/net";
 import {randomOutfit} from "./world/avatar";
@@ -30,9 +31,12 @@ export default function Multiplayer({open,onClose,onJoined,onTrouble,getEngine,g
    leave:id=>{getEngine()?.dropFriend(id);getAudio().dropVoice(id);talking.current.friends.delete(id);},
    voice:(id,stream)=>{const s=friends.current.get(id)?.state;void getAudio().voice(id,stream,{x:s?.x??0,y:(s?.y??0)+1.55,z:s?.z??0});},
    door:(id,isOpen)=>getEngine()?.setDoor(id,isOpen),
+   gesture:(id,kind)=>{if(kind in GESTURES)getEngine()?.friendGesture(id,kind as Gesture);},
   });
-  lobby.current=l;const door=(e:Event)=>{const {id,open:o}=(e as CustomEvent<{id:string;open:boolean}>).detail;l.door(id,o);};netBus.addEventListener("door",door);
-  return()=>{netBus.removeEventListener("door",door);l.leave();lobby.current=null;};
+  lobby.current=l;const door=(e:Event)=>{const {id,open:o}=(e as CustomEvent<{id:string;open:boolean}>).detail;l.door(id,o);};netBus.addEventListener("door",door);const gesture=(e:Event)=>l.gesture((e as CustomEvent<string>).detail);netBus.addEventListener("gesture",gesture);
+  // Closing or leaving the page disconnects straight away (friends see you go at once).
+  const bye=()=>l.leave();window.addEventListener("pagehide",bye);window.addEventListener("beforeunload",bye);
+  return()=>{window.removeEventListener("pagehide",bye);window.removeEventListener("beforeunload",bye);netBus.removeEventListener("door",door);netBus.removeEventListener("gesture",gesture);l.leave();lobby.current=null;};
  },[getEngine,getAudio]);
  // In a room: send where you are ~15 times a second, and watch who is talking (for tags and the music ducking).
  useEffect(()=>{

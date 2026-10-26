@@ -79,7 +79,7 @@ export function makeAvatar(outfit?: Outfit): Person {
     const scales = bones.map(b => b.scale.clone()); bones.forEach(b => { b.rotation.set(0, 0, 0); b.scale.setScalar(1); }); body.position.set(0, 0, 0); body.rotation.set(0, 0, 0); root.updateMatrixWorld(true);
     const skeleton = new T.Skeleton(bones);
     for (const part of parts!) {
-      const mesh = new T.SkinnedMesh(part.geometry, part.material); mesh.name = part.name; mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = false; mesh.userData.shared = true;
+      const mesh = new T.SkinnedMesh(part.geometry, part.material); mesh.name = part.name; mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = true; // characters cast real shadows mesh.userData.shared = true;
       body.add(mesh); mesh.updateMatrixWorld(true); mesh.bind(skeleton);
     }
     bones.forEach((b, i) => b.scale.copy(scales[i])); if (root.userData.outfit) dressAvatar(person, root.userData.outfit);

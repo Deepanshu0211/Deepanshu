@@ -17,7 +17,9 @@ type Message =
   | { t: "roster"; ids: string[] }
   | ({ t: "s" } & PlayerState)
   | { t: "talk"; on: boolean }
-  | { t: "door"; id: string; open: boolean };
+  | { t: "door"; id: string; open: boolean }
+  | { t: "gesture"; g: string }
+  | { t: "bye" };
 export interface LobbyEvents {
   /** Connection status for the UI. */
   status: (phase: "idle" | "connecting" | "in-room" | "error", text: string) => void;
@@ -27,6 +29,8 @@ export interface LobbyEvents {
   leave: (id: string) => void;
   voice: (id: string, stream: MediaStream) => void;
   door: (id: string, open: boolean) => void;
+  /** A friend waved, pointed, gave a thumbs up, clapped or danced. */
+  gesture: (id: string, kind: string) => void;
 }
 // Across different networks a direct connection often fails, so a TURN relay is added when the site has one
 // (see app/api/turn). Fetched fresh for each join: relay credentials are short-lived.
@@ -47,6 +51,9 @@ async function meetingPoint(code: string) {
 export class Lobby {
   private Peer: typeof PeerType | null = null; private me: PeerType | null = null; private keeper: PeerType | null = null; private point = "";
   private links = new Map<string, { data: DataConnection; call?: MediaConnection; player: Player }>();
+  // Heartbeat: friends send their position many times a second, so one silent for 20 s has gone (a crash, a dropped
+  // network, a closed laptop) even if the connection never said so.
+  private seen = new Map<string, number>(); private watchdog = 0;
   private config: RTCConfiguration = STUN_ONLY; private relay = false;
   private mic: MediaStream | null = null; private self: { name: string; color: string; mic: boolean; outfit?: Outfit } = { name: "", color: "", mic: false }; private left = false;
   constructor(private events: LobbyEvents) {}
@@ -55,6 +62,7 @@ export class Lobby {
   get micStream() { return this.mic; }
 
   async join(code: string, name: string, color: string, wantMic: boolean, outfit?: Outfit) {
+    clearInterval(this.watchdog); this.watchdog = window.setInterval(() => { const now = performance.now(); for (const id of Array.from(this.links.keys())) if (now - (this.seen.get(id) ?? now) > 20000) this.drop(id); }, 2000);
     this.leave(); this.left = false; this.self = { name, color, mic: false, outfit };
     this.events.status("connecting", "Finding your room…");
     if (wantMic) {
@@ -103,7 +111,7 @@ export class Lobby {
     const gone = () => this.drop(data.peer); data.on("close", gone); data.on("error", gone);
   }
   private receive(id: string, m: Message) {
-    const link = this.links.get(id); if (!link) return;
+    const link = this.links.get(id); if (!link) return; this.seen.set(id, performance.now());
     switch (m.t) {
       case "hello": link.player.name = m.name.slice(0, 24) || "Friend"; link.player.color = /^#[0-9a-f]{6}$/i.test(m.color) ? m.color : "#e0a526"; link.player.mic = m.mic;
         { const o = m.outfit, hex = (v: unknown) => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v); link.player.outfit = o && hex(o.top) && hex(o.bottom) && hex(o.shoes) && hex(o.hair) ? { top: o.top, bottom: o.bottom, shoes: o.shoes, hair: o.hair } : undefined; }
@@ -111,6 +119,8 @@ export class Lobby {
       case "s": { const { t: _t, ...state } = m; void _t; if (state.seat !== undefined && (typeof state.seat !== "string" || state.seat.length > 32)) delete state.seat; link.player.state = state; this.events.move(id, state); break; }
       case "talk": link.player.talking = m.on; this.emitRoster(); break;
       case "door": this.events.door(m.id, m.open); break;
+      case "bye": this.drop(id); break; // left on purpose (or closed the tab): gone at once, not after a timeout
+      case "gesture": if (typeof m.g === "string" && m.g.length < 12) this.events.gesture(id, m.g); break;
     }
   }
   /** One call per pair: whoever has a microphone calls (both have one: the smaller id calls); the answer carries the other voice back. */
@@ -126,7 +136,7 @@ export class Lobby {
     call.on("close", () => { if (link.call === call) link.call = undefined; });
   }
   private drop(id: string) {
-    const link = this.links.get(id); if (!link) return; this.links.delete(id); link.call?.close(); link.data.close();
+    const link = this.links.get(id); if (!link) return; this.links.delete(id); this.seen.delete(id); link.call?.close(); link.data.close();
     this.events.leave(id); this.emitRoster();
     if (!this.left) { this.events.status("in-room", this.links.size ? `${this.links.size + 1} in the room` : "Your friends left. The room stays open."); if (!this.keeper) setTimeout(() => { if (!this.keeper && !this.left) void this.claim(); }, 300 + Math.random() * 1500); }
   }
@@ -135,9 +145,11 @@ export class Lobby {
   send(state: PlayerState) { this.broadcast({ t: "s", ...state }); }
   talking(on: boolean) { this.broadcast({ t: "talk", on }); }
   door(id: string, open: boolean) { this.broadcast({ t: "door", id, open }); }
+  gesture(kind: string) { this.broadcast({ t: "gesture", g: kind }); }
   /** Mute or unmute without renegotiating: the track keeps flowing, silent. */
   setMuted(muted: boolean) { this.mic?.getAudioTracks().forEach(t => { t.enabled = !muted; }); }
   leave() {
+    if (this.links.size) this.broadcast({ t: "bye" }); clearInterval(this.watchdog);
     this.left = true; for (const id of Array.from(this.links.keys())) this.drop(id);
     this.keeper?.destroy(); this.keeper = null; this.me?.destroy(); this.me = null; this.mic?.getTracks().forEach(t => t.stop()); this.mic = null;
     this.events.status("idle", ""); this.events.roster([]);

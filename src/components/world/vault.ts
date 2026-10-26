@@ -39,7 +39,7 @@ export function createVault(): Area {
   lathe(lamp, [[.02, 0], [.06, -.01], [.1, -.12]], [0, .42, 0], new T.MeshPhysicalMaterial({ color: "#24392f", roughness: .35, clearcoat: .6, side: T.DoubleSide }), 32);
   cylinder(lamp, .03, .03, .04, [0, .36, 0], emissive(c.amber, 3), 16);
   // A reading corner by the door: two armchairs and a cabinet of books, clear of the door's swing.
-  armchair(root, [2.5, 0, -2.4], .5, "#c4a13f"); armchair(root, [3.35, 0, -1.7], -1.2, "#a4502b");
+  ([[2.5, -2.4, .5, "#c4a13f"], [3.35, -1.7, -1.2, "#a4502b"]] as [number, number, number, string][]).forEach(([x, z, turn, color], i) => perches.push({ id: `reading-${i}`, group: "reading", at: group(interactive(armchair(root, [x, 0, z], turn, color), "sit:reading", "Sit in the reading corner"), [0, .5, .06]) }));
   box(root, [1.6, .9, .4], [-2.4, .45, -2.95], walnut, .015); for (const x of [-2.8, -2]) box(root, [.76, .8, .01], [x, .45, -2.745], oak, .006);
   books(root, [-3.1, .9, -2.95], 1.4, 21);
   plant(root, [-3.5, 0, 2.75], 1.4); plant(root, [-3.5, 0, -2.75], 1.2);

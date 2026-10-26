@@ -7,8 +7,9 @@ import { type Action,type Area,type Location,type WorldOptions,type Weather,disp
 import { createBuilding,rooms } from "./building";
 import { Walker } from "./controller";
 import { createPost,FAR_LAYER,type Post } from "./post";
+import { GESTURES,type Gesture } from "./gestures";
 import { wind } from "./materials";
-import { makePerson,walk as stride,sit as sitPose } from "./people";
+import { makePerson,walk as stride,sit as sitPose,type Person } from "./people";
 import { loadAvatar,makeAvatar,dressAvatar,type Outfit } from "./avatar";
 import type { PlayerState } from "./net";
 import { computeBoundsTree,acceleratedRaycast } from "three-mesh-bvh";
@@ -39,6 +40,8 @@ export interface WorldCallbacks {
  cue?:(kind:"jump"|"land"|"hover",at:T.Vector3)=>void;
  /** You opened or closed a door (shared with friends in the room). */
  door?:(id:string,open:boolean)=>void;
+ /** You made a gesture (shared with friends in the room). */
+ gesture?:(kind:Gesture)=>void;
  screen?:(seat:{id:"computer"|"laptop";x:number;y:number;w:number;h:number}|null)=>void;
 }
 // Per-weather light: window key colour and strength, sky fill, and the world beyond the glass.
@@ -92,43 +95,78 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  // The visitor's own character model, rigged on load (avatar.ts). Its head is folded away so the camera never sits inside it.
  let avatarFailed=false;const avatarReady=loadAvatar().catch(error=>{avatarFailed=true;console.warn("Character model unavailable",error);});
  const self=makeAvatar();self.head.scale.setScalar(.001);
- self.root.visible=false;scene.add(self.root);let gait=0;
+ self.root.visible=false;scene.add(self.root);let gait=0,myGesture:{kind:Gesture;start:number}|null=null,figuresMoved=false;
+ // Characters cast real sun shadows (avatar.ts), and a soft contact shadow sits under each one's feet. Your own head is
+ // folded away for the camera, so a head that only exists in shadow maps stands in for it: your shadow has a head.
+ const blobMaterial=new T.MeshBasicMaterial({map:(()=>{const c=document.createElement("canvas");c.width=c.height=64;const g=c.getContext("2d")!,r=g.createRadialGradient(32,32,0,32,32,32);r.addColorStop(0,"rgba(0,0,0,.5)");r.addColorStop(.5,"rgba(0,0,0,.26)");r.addColorStop(1,"rgba(0,0,0,0)");g.fillStyle=r;g.fillRect(0,0,64,64);return new T.CanvasTexture(c);})(),transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2});
+ const blobGeometry=new T.PlaneGeometry(.72,.72).rotateX(-Math.PI/2);
+ function blob(){const m=new T.Mesh(blobGeometry,blobMaterial);m.renderOrder=1;m.userData.ground=0;scene.add(m);return m;}
+ /** Under the feet; while airborne it stays on the last floor and shrinks with height. */
+ function placeBlob(m:T.Mesh,x:number,feet:number,z:number,grounded:boolean,shown:boolean){m.visible=shown;if(!shown)return;if(grounded)m.userData.ground=feet;const h=Math.max(0,feet-m.userData.ground),k=1/(1+h*2.2);m.position.set(x,m.userData.ground+.014,z);m.scale.set(k,1,k);}
+ const selfBlob=blob();
+ const shadowHead=new T.Mesh(new T.SphereGeometry(.11,12,10),new T.MeshBasicMaterial());shadowHead.scale.set(.9,1.12,1);shadowHead.position.y=1.6;shadowHead.castShadow=true;self.body.add(shadowHead);
+ shadowHead.layers.test=()=>{const rt=renderer.getRenderTarget();if(!rt)return false;if(rt===light.shadow.map)return true;for(const l of shadowLights)if(l.shadow.map===rt)return true;return false;};
+ /** Pose a gesture over the walk or seat pose; false once it is over (a dance also ends when they walk off). */
+ function gesturePose(p:Person,g:{kind:Gesture;start:number},now:number,pitch:number,moving:boolean){
+  const t=(now-g.start)/1000,{dur}=GESTURES[g.kind];if(t>dur||(g.kind==="dance"&&moving&&t>.6))return false;
+  const w=Math.max(0,Math.min(1,t/.25,(dur-t)/.3)),to=(e:T.Euler,axis:"x"|"y"|"z",v:number)=>{e[axis]+=(v-e[axis])*w;};
+  const [rs,ls]=p.shoulders,[re,le]=p.elbows;
+  if(g.kind==="wave"){to(rs.rotation,"z",-2.5+Math.sin(t*9)*.28);to(rs.rotation,"x",-.2);to(re.rotation,"x",-.5);}
+  else if(g.kind==="point"){to(rs.rotation,"x",-Math.PI/2-pitch*.9);to(rs.rotation,"z",.08);to(re.rotation,"x",0);}
+  else if(g.kind==="thumbs"){to(rs.rotation,"x",-.75);to(re.rotation,"x",-1.45);to(rs.rotation,"z",.12);}
+  else if(g.kind==="clap"){[[rs,re,-1],[ls,le,1]].forEach(([sh,el,side])=>{const sb=sh as T.Object3D,eb=el as T.Object3D,sd=side as number;to(sb.rotation,"x",-1.1);to(sb.rotation,"z",-sd*(.36+.14*Math.sin(t*14)));to(eb.rotation,"x",-.95);});}
+  else{[[rs,re,-1,0],[ls,le,1,Math.PI]].forEach(([sh,el,side,phase])=>{const sb=sh as T.Object3D,eb=el as T.Object3D;to(sb.rotation,"z",(side as number)*(1.5+.8*Math.sin(t*6+(phase as number))));to(eb.rotation,"x",-.6);});
+   p.body.position.y+=Math.abs(Math.sin(t*6))*.05*w;to(p.body.rotation,"z",Math.sin(t*3)*.12);for(const k of p.knees)to(k.rotation,"x",.25+.25*Math.sin(t*6));for(const h of p.hips)to(h.rotation,"x",-.12);}
+  return true;
+ }
+ /** Lying down (the bed): the body flat on its back along the perch, head at the perch, feet toward where it faces. */
+ function liePose(p:Person,at:T.Vector3,fwd:T.Vector3){p.root.position.set(at.x+fwd.x*1.62,at.y+.06,at.z+fwd.z*1.62);p.root.rotation.y=Math.atan2(fwd.x,fwd.z);stride(p,0,0);p.body.position.y=0;p.body.rotation.x=-Math.PI/2;}
+ function startGesture(kind:Gesture){myGesture={kind,start:performance.now()};callbacks.gesture?.(kind);lastRender=0;}
  // Friends in the room (net.ts): each one is an articulated person easing toward their latest pose, walking at
  // the speed they really walk, with a name tag that lights up green while they talk.
- type Remote={person:ReturnType<typeof makePerson>;tag:T.Sprite;canvas:HTMLCanvasElement;texture:T.CanvasTexture;name:string;color:string;outfit:string;talking:boolean;goal:PlayerState|null;gait:number;placed:boolean};
+ type Remote={person:ReturnType<typeof makePerson>;tag:T.Sprite;canvas:HTMLCanvasElement;texture:T.CanvasTexture;name:string;color:string;outfit:string;talking:boolean;goal:PlayerState|null;gait:number;placed:boolean;blob:T.Mesh;gesture:{kind:Gesture;start:number}|null;last:T.Vector3};
  const remotes=new Map<string,Remote>(),skins=["#8d5a3b","#b9825c","#c99a76","#6f4630","#d8ab84"];
  function drawTag(r:Remote){const g=r.canvas.getContext("2d")!;g.clearRect(0,0,512,128);g.fillStyle="rgba(31,26,23,.72)";g.beginPath();g.roundRect(8,24,496,80,40);g.fill();
   g.fillStyle=r.talking?"#8fd19e":r.color;g.beginPath();g.arc(62,64,r.talking?20:15,0,Math.PI*2);g.fill();if(r.talking){g.strokeStyle="#8fd19e88";g.lineWidth=6;g.beginPath();g.arc(62,64,30,0,Math.PI*2);g.stroke();}
-  g.fillStyle="#f1eadb";g.font="600 44px system-ui, sans-serif";g.textBaseline="middle";g.fillText(r.name.slice(0,16),104,66);r.texture.needsUpdate=true;}
+  g.fillStyle="#f1eadb";g.font="600 44px system-ui, sans-serif";g.textBaseline="middle";g.fillText(r.name.slice(0,16)+(r.gesture?"  "+GESTURES[r.gesture.kind].emoji:""),104,66);r.texture.needsUpdate=true;}
  function makeRemote(id:string,name:string,color:string,outfit?:Outfit):Remote{
   let hash=0;for(const ch of id)hash=(hash*31+ch.charCodeAt(0))|0;
   const person=avatarFailed?makePerson({skin:skins[Math.abs(hash)%skins.length],top:outfit?.top??color,bottom:outfit?.bottom??"#2d3a6b",hair:outfit?.hair??"#1f1a17",longHair:Math.abs(hash)%3===0}):makeAvatar(outfit);person.root.visible=false;scene.add(person.root);
   const canvas=document.createElement("canvas");canvas.width=512;canvas.height=128;const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;
   const tag=new T.Sprite(new T.SpriteMaterial({map:texture,transparent:true,depthWrite:false}));tag.scale.set(.72,.18,1);tag.position.y=2.02;person.root.add(tag);
-  const r:Remote={person,tag,canvas,texture,name,color,outfit:JSON.stringify(outfit??null),talking:false,goal:null,gait:0,placed:false};drawTag(r);return r;}
- function dropRemote(id:string){const r=remotes.get(id);if(!r)return;remotes.delete(id);scene.remove(r.person.root);r.person.root.traverse(o=>{if(o instanceof T.Mesh&&!o.userData.shared)o.geometry.dispose();});r.texture.dispose();(r.tag.material as T.SpriteMaterial).dispose();}
+  const r:Remote={person,tag,canvas,texture,name,color,outfit:JSON.stringify(outfit??null),talking:false,goal:null,gait:0,placed:false,blob:blob(),gesture:null,last:new T.Vector3()};drawTag(r);return r;}
+ function dropRemote(id:string){const r=remotes.get(id);if(!r)return;remotes.delete(id);scene.remove(r.person.root);scene.remove(r.blob);r.person.root.traverse(o=>{if(o instanceof T.Mesh&&!o.userData.shared)o.geometry.dispose();});r.texture.dispose();(r.tag.material as T.SpriteMaterial).dispose();}
  function updateRemotes(dt:number){const k=1-Math.exp(-dt*12);for(const r of remotes.values()){const g=r.goal;if(!g)continue;const root=r.person.root;
   if(!r.placed){r.placed=true;root.position.set(g.x,g.y,g.z);root.rotation.y=g.yaw+Math.PI;}
   root.position.x+=(g.x-root.position.x)*k;root.position.y+=(g.y-root.position.y)*k;root.position.z+=(g.z-root.position.z)*k;
-  const turn=Math.atan2(Math.sin(g.yaw+Math.PI-root.rotation.y),Math.cos(g.yaw+Math.PI-root.rotation.y));root.rotation.y+=turn*k;
+  // Looking around turns the head first; the body follows only when walking or once the head can turn no further.
+  const turn=Math.atan2(Math.sin(g.yaw+Math.PI-root.rotation.y),Math.cos(g.yaw+Math.PI-root.rotation.y));
+  if(g.speed>.3||Math.abs(turn)>1.05||root.userData.turning){root.userData.turning=Math.abs(turn)>.12;root.rotation.y+=turn*(g.speed>.3?k:k*.45);}
   const perch=g.seat?perchById(g.seat):null;
-  if(perch){perch.at.getWorldPosition(seatAt);perch.at.getWorldDirection(seatFwd);root.position.set(seatAt.x,seatAt.y-SEAT_DROP,seatAt.z);root.rotation.y=Math.atan2(seatFwd.x,seatFwd.z);stride(r.person,0,0);sitPose(r.person);}
+  r.person.body.rotation.x=0;r.person.body.rotation.z=0;
+  if(perch){perch.at.getWorldPosition(seatAt);perch.at.getWorldDirection(seatFwd);if(perch.pose==="lie")liePose(r.person,seatAt,seatFwd);else{root.position.set(seatAt.x,seatAt.y-SEAT_DROP,seatAt.z);root.rotation.y=Math.atan2(seatFwd.x,seatFwd.z);stride(r.person,0,0);sitPose(r.person);}}
   else{r.gait+=dt*g.speed*3.4;stride(r.person,r.gait,options.motion?Math.min(1.6,g.speed/2.35):0);if(!g.grounded&&options.motion){for(const kn of r.person.knees)kn.rotation.x=.75;for(const h of r.person.hips)h.rotation.x=-.5;}}
-  r.person.head.rotation.x=-g.pitch*.5;
+  // The head turns left and right and tilts up and down to wherever they are looking (as far as a neck goes).
+  { const look=Math.atan2(Math.sin(g.yaw+Math.PI-root.rotation.y),Math.cos(g.yaw+Math.PI-root.rotation.y)),head=r.person.head.rotation,hk=1-Math.exp(-dt*14);
+    head.y+=(T.MathUtils.clamp(look,-1.2,1.2)-head.y)*hk;head.x+=(T.MathUtils.clamp(-g.pitch*.8,-.75,.6)-head.x)*hk; }
+  if(r.gesture&&!gesturePose(r.person,r.gesture,performance.now(),g.pitch,g.speed>.3)){r.gesture=null;drawTag(r);}
   // Standing where you stand (everyone arrives at the same spot): hidden until they step out of your eyes.
-  r.person.root.visible=Math.hypot(root.position.x-camera.position.x,root.position.z-camera.position.z)>.55;}}
+  r.person.root.visible=Math.hypot(root.position.x-camera.position.x,root.position.z-camera.position.z)>.55;
+  placeBlob(r.blob,root.position.x,root.position.y,root.position.z,g.grounded||Boolean(perch),r.person.root.visible&&perch?.pose!=="lie");
+  // Their shadow moves with them, so the cached shadow map is refreshed while anyone is moving or gesturing.
+  if(r.last.distanceToSquared(root.position)>1e-6||r.gesture){figuresMoved=true;r.last.copy(root.position);}}}
  // Seats people share (the sofa, the conference chairs): a click takes the nearest free one, and a friend's seat is
  // taken. While seated the walker stays on the seat and you can still look around; a movement key stands you up.
- const SEAT_DROP=.45,seatAt=new T.Vector3(),seatFwd=new T.Vector3();let perched:{id:string;at:T.Object3D}|null=null;
+ const SEAT_DROP=.45,seatAt=new T.Vector3(),seatFwd=new T.Vector3();let perched:{id:string;at:T.Object3D;pose?:"lie"}|null=null;
  function perchById(id:string){for(const a of areas.values())for(const p of a.perches??[])if(p.id===id)return p;return null;}
  function seatTaken(id:string){for(const r of remotes.values())if(r.goal?.seat===id)return true;return false;}
  function sitDown(group:string,point:T.Vector3){
-  let best:{id:string;at:T.Object3D}|null=null,bd=Infinity;
+  let best:{id:string;at:T.Object3D;pose?:"lie"}|null=null,bd=Infinity;
   for(const a of areas.values())for(const p of a.perches??[]){if(p.group!==group||p.id===perched?.id||seatTaken(p.id))continue;p.at.getWorldPosition(seatAt);const d=seatAt.distanceToSquared(point);if(d<bd){bd=d;best=p;}}
   if(!best){callbacks.notice("Every seat here is taken.");return;}
   perched=best;best.at.getWorldPosition(seatAt);best.at.getWorldDirection(seatFwd);
-  player.clear();player.seated={x:seatAt.x,z:seatAt.z,eye:seatAt.y+.68};player.face(Math.atan2(-seatFwd.x,-seatFwd.z));
-  callbacks.notice("Press W, A, S, D or Space to stand up.");lastRender=0;
+  const lying=best.pose==="lie";player.clear();player.seated={x:seatAt.x,z:seatAt.z,eye:seatAt.y+(lying?.3:.68)};player.face(Math.atan2(-seatFwd.x,-seatFwd.z));if(lying)player.aim(1.05);
+  callbacks.notice(lying?"Lying down. Press W, A, S, D or Space to get up.":"Press W, A, S, D or Space to stand up.");lastRender=0;
  }
  // Standing up lands where you fit: behind the seat (pushing a chair back), else in front, else to a side. A chair faces
  // a table, and standing inside the table pushed you down through the floor.
@@ -161,7 +199,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   return {id:s.id,x:x0,y:y0,w:x1-x0,h:y1-y0};}
  function postWanted(){return !low&&options.quality!=="low";}
  function ensurePost(){if(postWanted()&&!post){try{post=createPost(renderer,scene,camera);sizePost();post.ao.enabled=options.ao!==false&&!aoOff;post.bloom.enabled=options.bloom!==false;post.grain(options.grain!==false);}catch(error){console.warn(error);low=true;}}return postWanted()?post:null;}
- const lastLightPos=new T.Vector3(),frameOptions:WorldOptions={...initial};let shadowFrame=0,lastStats=0;
+ const bodies:T.Vector3[]=[],you=new T.Vector3(),lastLightPos=new T.Vector3(),frameOptions:WorldOptions={...initial};let shadowFrame=0,lastStats=0;
  const sky=new T.Color(),keyColor=new T.Color(),groundColor=new T.Color(),fillColor=new T.Color(),keyPosition=new T.Vector3();
  const ray=new T.Raycaster();const center=new T.Vector2(),pointer=new T.Vector2();let hasPointer=false,pointerMoved=0,selected:T.Object3D|null=null,lastLabel="",highlighted:T.Object3D|null=null;const selectedPoint=new T.Vector3(),forward=new T.Vector3();
  const downloads=new Map<Location,Promise<()=>Area>>();
@@ -258,7 +296,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  }
  async function activate(object:T.Object3D|null,point:T.Vector3){
   if(!object)return;const action=object.userData.action as Action;
-  if(action.startsWith("sit:")){sitDown(action.slice(4),point);callbacks.action(action,point.clone());return;}
+  if(action.startsWith("sit:")){sitDown(action.slice(4),point);for(const area of areas.values())if(isDescendant(object,area.root))area.interact?.(action);callbacks.action(action,point.clone());return;}
   if(action==="exit"){callbacks.action(action,point.clone());callbacks.action("shelf",openSecret(true));return;}
   if(action==="computer"||action==="laptop"){sit(action);callbacks.action(action,point.clone());return;}
   if(action.startsWith("door:")){
@@ -287,6 +325,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  // Losing pointer lock while walking, with the page still focused, means the browser handled Escape.
  function lockChange(){if(document.pointerLockElement===canvas){player.active=true;callbacks.active(true);}else if(mode==="pointer"&&player.active){player.active=false;player.clear();callbacks.active(false,document.hasFocus());}}
  function keyDown(e:KeyboardEvent){if(!player.active||e.target instanceof HTMLInputElement)return;if(e.code==="Escape"){pause(true);return;}
+  const gesture=(Object.keys(GESTURES) as Gesture[]).find(k=>e.code==="Digit"+GESTURES[k].key);if(gesture){if(!e.repeat)startGesture(gesture);return;}
   if(perched&&["KeyW","KeyA","KeyS","KeyD","Space"].includes(e.code)){e.preventDefault();standUp();return;}if(["KeyW","KeyA","KeyS","KeyD","ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space","KeyE","ShiftLeft","ShiftRight"].includes(e.code)){e.preventDefault();if(e.code==="KeyE"){if(!e.repeat)void interact();}else player.keys.add(e.code);}}
  function keyUp(e:KeyboardEvent){player.keys.delete(e.code);}
  let pointerId:number|null=null,previousX=0,previousY=0,pressX=0,pressY=0;
@@ -334,9 +373,15 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   if(player.capsule.start.y<-3){const [cx,cz]=rooms[areaId].center,[x,z]=clearSpot(cx,cz,[[0,0]]);player.place(x,z,player.yaw,player.pitch);}
   updateRemotes(dt);
   const speed=Math.hypot(player.velocity.x,player.velocity.z);self.root.visible=(player.active||Boolean(perched))&&!seat&&seatBlend===0;
-  if(self.root.visible&&perched){perched.at.getWorldPosition(seatAt);perched.at.getWorldDirection(seatFwd);self.root.position.set(seatAt.x,seatAt.y-SEAT_DROP,seatAt.z);self.root.rotation.y=Math.atan2(seatFwd.x,seatFwd.z);stride(self,0,0);sitPose(self);}
+  self.body.rotation.x=0;self.body.rotation.z=0;
+  // A seat that moves (the swing) carries you with it.
+  if(perched){perched.at.getWorldPosition(seatAt);perched.at.getWorldDirection(seatFwd);player.seated={x:seatAt.x,z:seatAt.z,eye:seatAt.y+(perched.pose==="lie"?.3:.68)};}
+  if(self.root.visible&&perched){if(perched.pose==="lie")liePose(self,seatAt,seatFwd);else{self.root.position.set(seatAt.x,seatAt.y-SEAT_DROP,seatAt.z);self.root.rotation.y=Math.atan2(seatFwd.x,seatFwd.z);stride(self,0,0);sitPose(self);}}
   else if(self.root.visible){gait+=dt*speed*3.4;stride(self,gait,options.motion?Math.min(1.6,speed/2.35):0);if(!player.grounded&&options.motion){for(const k of self.knees)k.rotation.x=.75;for(const h of self.hips)h.rotation.x=-.5;}
    self.root.position.set(player.capsule.start.x+Math.sin(player.yaw)*.16,player.capsule.start.y-.24,player.capsule.start.z+Math.cos(player.yaw)*.16);self.root.rotation.y=player.yaw+Math.PI;}
+  if(myGesture&&!(self.root.visible&&gesturePose(self,myGesture,performance.now(),player.pitch,speed>.3)))myGesture=null;
+  placeBlob(selfBlob,player.capsule.start.x,player.capsule.start.y-.24,player.capsule.start.z,player.grounded,self.root.visible&&perched?.pose!=="lie");
+  if(self.root.visible&&(speed>.05||!player.grounded||myGesture||perched))figuresMoved=true;
   if(player.active){if(wasGrounded&&player.velocity.y>2.5)callbacks.cue?.("jump",camera.position);else if(!wasGrounded&&player.grounded&&fallSpeed<-1.5)callbacks.cue?.("land",player.capsule.start);}
   if(Math.abs(camera.fov-fovGoal)>.01){camera.fov+=(fovGoal-camera.fov)*(options.motion?1-Math.exp(-dt*10):1);camera.updateProjectionMatrix();}
   const id=locationAt(camera.position.x,camera.position.z);if(id!==areaId){areaId=id;callbacks.location(id);}
@@ -346,7 +391,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   if(using&&seatBlend>0){scene.updateMatrixWorld();using.eye.getWorldPosition(seatPos);using.screen.getWorldPosition(seatLook);lookMatrix.lookAt(seatPos,seatLook,camera.up);seatQuat.setFromRotationMatrix(lookMatrix);walkPos.copy(camera.position);walkQuat.copy(camera.quaternion);const e=seatBlend*seatBlend*(3-2*seatBlend);camera.position.lerpVectors(walkPos,seatPos,e);camera.quaternion.slerpQuaternions(walkQuat,seatQuat,e);}
   camera.updateMatrixWorld();
   // Visibility first; then only rooms you can see animate and draw (plus any mid-move, like the shelf closing behind you).
-  cull();frameOptions.motion=options.motion;frameOptions.weather=options.weather;frameOptions.lamp=options.lamp;frameOptions.fan=options.fan;frameOptions.music=options.music;frameOptions.quality=low?"low":options.quality;
+  cull();frameOptions.motion=options.motion;frameOptions.weather=options.weather;frameOptions.lamp=options.lamp;frameOptions.fan=options.fan;frameOptions.bodies=bodies;bodies.length=0;bodies.push(you.set(player.capsule.start.x,player.capsule.start.y-.24,player.capsule.start.z));for(const r of remotes.values())if(r.placed)bodies.push(r.person.root.position);frameOptions.music=options.music;frameOptions.quality=low?"low":options.quality;
   for(const [room,area] of areas){const shown=visibleRooms.has(room);area.root.visible=shown;if(shown||area.busy?.())area.update?.(elapsed,dt,frameOptions);}
   if(outdoors)outdoors.root.visible=outsideVisible;if(heavens)heavens.root.visible=outsideVisible;
   scene.updateMatrixWorld();follow();
@@ -370,7 +415,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   // Shadow maps are cached: re-render when the light has moved more than a centimetre, a door swings, what is visible
   // changes, or a shadow-casting object actually moved (checked on a steady cadence; every frame on the balcony).
   // A lamp's own shadow map is redrawn only while its room can be seen.
-  const vis=[...visibleRooms].join()+"|"+outsideVisible;shadowFrame++;castersDirty=castersMoved()||castersDirty;
+  const vis=[...visibleRooms].join()+"|"+outsideVisible;shadowFrame++;castersDirty=castersMoved()||castersDirty||figuresMoved;figuresMoved=false;
   if(light.position.distanceToSquared(lastLightPos)>1e-4||vis!==visibilityKey||building.doors.some(d=>Math.abs(d.angle-d.target)>.001)||(castersDirty&&options.motion&&shadowFrame%(areaId==="rooftop"?1:3)===0)){
    renderer.shadowMap.needsUpdate=true;lastLightPos.copy(light.position);visibilityKey=vis;castersDirty=false;
    for(const l of shadowLights)l.shadow.needsUpdate=visibleRooms.has(locationAt(l.matrixWorld.elements[12],l.matrixWorld.elements[14]));
@@ -425,7 +470,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   const warmTag=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(document.createElement("canvas")),transparent:true,depthWrite:false}));scene.add(warmTag);
   const culled:T.Object3D[]=[];scene.traverse(o=>{if(o.frustumCulled){o.frustumCulled=false;culled.push(o);}});
   renderer.shadowMap.needsUpdate=true;for(const l of shadowLights)l.shadow.needsUpdate=true;
-  self.root.visible=true; // so the character's skinned shader compiles here too
+  self.root.visible=true;selfBlob.visible=true; // so the character's skinned and shadow shaders compile here too
   try{raster();bakeReflections();}catch(error){console.warn(error);}finally{for(const o of culled)o.frustumCulled=true;self.root.visible=false;scene.remove(warmTag);warmTag.material.map?.dispose();warmTag.material.dispose();}
   if(destroyed)return;renderer.shadowMap.needsUpdate=true;bakeSoon=performance.now()+300;callbacks.progress?.(1,"Ready");callbacks.ready();renderer.setAnimationLoop(frame);
  })();
@@ -440,6 +485,10 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  friend(id:string,name:string,color:string,talking:boolean,outfit?:Outfit){let r=remotes.get(id);if(r&&(r.color!==color||r.outfit!==JSON.stringify(outfit??null))){dropRemote(id);r=undefined;}if(!r){r=makeRemote(id,name,color,outfit);remotes.set(id,r);}if(r.name!==name||r.talking!==talking){r.name=name;r.talking=talking;drawTag(r);}lastRender=0;},
  /** A song is playing on the record player (the platter turns). Cheap: no renderer changes. */
  setMusic(on:boolean){options.music=on;},
+ /** Make a gesture yourself (keys 1 to 5 do the same). */
+ gesture(kind:Gesture){startGesture(kind);},
+ /** A friend made a gesture. */
+ friendGesture(id:string,kind:Gesture){const r=remotes.get(id);if(!r||!GESTURES[kind])return;r.gesture={kind,start:performance.now()};drawTag(r);lastRender=0;},
  moveFriend(id:string,state:PlayerState){const r=remotes.get(id);if(r)r.goal=state;},
  dropFriend(id:string){dropRemote(id);},
  /** A friend opened or closed a door. */

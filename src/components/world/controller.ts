@@ -16,6 +16,7 @@ export class Walker {
  /** Out of a door or swinging shelf, keeping only the velocity along it. */
  private push(part:Building["movers"][number]){const hit=this.building.doorCollision(part,this.capsule);if(hit){this.capsule.translate(this.translation.copy(hit.normal).multiplyScalar(hit.depth+.0001));const into=this.velocity.dot(hit.normal);if(into<0)this.velocity.addScaledVector(hit.normal,-into);}}
  face(yaw:number){this.yaw=this.yawGoal=yaw;}
+ aim(pitch:number){this.pitch=this.pitchGoal=pitch;}
  clear(){this.keys.clear();this.stick.set(0,0);this.velocity.set(0,0,0);}
  place(x:number,z:number,yaw:number,pitch=-.05){const dy=this.capsule.end.y-this.capsule.start.y;this.capsule.start.set(x,.3,z);this.capsule.end.set(x,.3+dy,z);this.yaw=this.yawGoal=yaw;this.pitch=this.pitchGoal=pitch;this.velocity.set(0,0,0);this.intro=0;}
  update(dt:number,motion:boolean){

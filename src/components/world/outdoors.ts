@@ -219,6 +219,54 @@ export function createOutdoors() {
     for (const [i, p] of chat.entries()) { walk(p, 0, 0); p.shoulders[1].rotation.x = -1.3 + Math.sin(t * 2 + i * 2) * .25; p.elbows[1].rotation.x = -1.4; p.head.rotation.y = Math.sin(t * .7 + i) * .3; }
     walk(vendor, 0, 0); vendor.shoulders[0].rotation.x = Math.sin(t * .9) * .4 - .2; vendor.head.rotation.y = Math.sin(t * .4) * .5;
   } });
+  // ── Life on the rooftops ─────────────────────────────────────────────────────────────────────────────────────
+  // Across from the kitchen: an auntie pegging out laundry that flaps, and a boy flying a kite on a long string.
+  const roofA = G + 15 + .45, roofB = G + 18 + .45;
+  const lineMat = new T.LineBasicMaterial({ color: "#2a2622" });
+  const laundryLine = new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(24, roofA + 1.7, -18), new T.Vector3(31, roofA + 1.7, -18)]), lineMat); dynamic.add(laundryLine);
+  for (const x of [24, 31]) rod(dynamic, [x, roofA, -18], [x, roofA + 1.75, -18], .03, metal("#6b6f6c", .5), 6);
+  const sheets = ["#b4532a", "#f1eadb", "#2d3a6b", "#e0a526", "#8a3b6b"].map((color, i) => { const g = new T.PlaneGeometry(.9, 1.1, 4, 4); g.translate(0, -.55, 0); const m = new T.Mesh(g, new T.MeshStandardMaterial({ color, roughness: .95, side: T.DoubleSide })); m.position.set(24.8 + i * 1.3, roofA + 1.7, -18); dynamic.add(m); return m; });
+  const auntie = addPerson({ skin: skin[2], top: "#8a3b6b", bottom: "#8a3b6b", hair: "#1b1512", saree: "#c0392b", longHair: true, height: 1.56 }); auntie.root.position.set(27, roofA, -17.4); auntie.root.rotation.y = Math.PI;
+  const flyer = addPerson({ skin: skin[0], top: "#1f6fb2", bottom: "#2b2b2b", hair: "#15110f", height: 1.3 }); flyer.root.position.set(30, roofA, -20.5); flyer.root.rotation.y = .4;
+  // Across from the bedroom: uncle's evening yoga on a mat.
+  box(dynamic, [.7, .02, 1.9], [-12, roofB + .01, -16.5], new T.MeshStandardMaterial({ color: "#2f6b4f", roughness: .9 }), 0);
+  const yogi = addPerson({ skin: skin[3], top: "#e9e6de", bottom: "#e9e6de", hair: "#bdb6aa", height: 1.68 }); yogi.root.position.set(-12, roofB, -16.5); yogi.root.rotation.y = 0;
+  // Kites over the neighbourhood (afternoons and golden hour): diamonds with ribbon tails, one on the boy's string.
+  const kiteGeo = new T.BufferGeometry().setFromPoints([new T.Vector3(0, .55, 0), new T.Vector3(-.42, 0, 0), new T.Vector3(0, -.65, 0), new T.Vector3(.42, 0, 0)]); kiteGeo.setIndex([0, 1, 2, 0, 2, 3]); kiteGeo.computeVertexNormals();
+  const kites = ["#d9622b", "#e3b448", "#c0392b", "#1f6fb2", "#2f6b4f", "#8a3b6b", "#f1eadb"].map((color, i) => {
+    const k = new T.Group(); k.add(new T.Mesh(kiteGeo, new T.MeshStandardMaterial({ color, roughness: .7, side: T.DoubleSide })));
+    const tail = new T.Mesh(new T.PlaneGeometry(.08, 1.4), new T.MeshStandardMaterial({ color: i % 2 ? "#f1eadb" : "#c0392b", side: T.DoubleSide })); tail.position.y = -1.3; k.add(tail);
+    k.userData.home = new T.Vector3(...[[34, 28, -26], [10, 34, -40], [-20, 30, -30], [60, 36, -10], [48, 26, 30], [-8, 40, 40], [22, 32, -60]][i]); k.scale.setScalar(1.6); dynamic.add(k); return k;
+  });
+  const kiteString = new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(), new T.Vector3()]), new T.LineBasicMaterial({ color: "#efe7d4", transparent: true, opacity: .55 })); kiteString.frustumCulled = false; dynamic.add(kiteString);
+  // A flock of pigeons on the tall block's parapet: now and then they all take off, wheel round and settle again.
+  const pigeonGeo = new T.BufferGeometry().setFromPoints([new T.Vector3(0, 0, .18), new T.Vector3(-.3, .06, -.04), new T.Vector3(0, .02, -.12), new T.Vector3(.3, .06, -.04)]); pigeonGeo.setIndex([0, 1, 2, 0, 2, 3]); pigeonGeo.computeVertexNormals();
+  const flock = new T.InstancedMesh(pigeonGeo, new T.MeshStandardMaterial({ color: "#6f747a", roughness: .8, side: T.DoubleSide }), 22); flock.frustumCulled = false; dynamic.add(flock);
+  const perch = Array.from({ length: 22 }, (_, i) => new T.Vector3(-3 + i * .55, G + 24 + .8, -16 + Math.sin(i) * .1)), pigeon = new T.Object3D(); let flight = 0, nextFlight = 8;
+  // Night: televisions flicker blue in a few windows across the street.
+  const tvs = [[-18, 2.2, -14.9], [-9, 5.2, -14.9], [2, 1.2, -15.9], [11, 7.2, -15.9], [26, .2, -15.9]].map(([x, y, z]) => { const m = new T.Mesh(new T.PlaneGeometry(1, .8), new T.MeshBasicMaterial({ color: "#000000" })); m.position.set(x, y, z); dynamic.add(m); return m; });
+  agents.push({ update(t, dt, w) {
+    const day = w === "day" || w === "sunset";
+    // Laundry flaps in the breeze; auntie pegs, steps along, pegs again.
+    sheets.forEach((m, i) => { m.rotation.x = Math.sin(t * 2.1 + i) * (w === "rain" ? .45 : .22) + .1; m.rotation.y = Math.sin(t * 1.3 + i * .7) * .12; });
+    const peg = (t * .25) % 1; auntie.root.position.x = 25 + Math.floor((t * .25) % 5) * 1.3; auntie.shoulders[0].rotation.x = auntie.shoulders[1].rotation.x = -2.2 - Math.sin(peg * Math.PI * 2) * .3;
+    auntie.root.visible = w !== "night" && w !== "rain";
+    // The kite flyer tugs the string; the kite answers.
+    flyer.shoulders[0].rotation.x = -1.6 + Math.sin(t * 3) * .25; flyer.shoulders[1].rotation.x = -1.4 + Math.sin(t * 3 + 1) * .2; flyer.root.visible = day;
+    kites.forEach((k, i) => { const h = k.userData.home as T.Vector3; k.visible = day; k.position.set(h.x + Math.sin(t * .4 + i) * 2.5, G + h.y + Math.sin(t * .9 + i * 2) * 1.6, h.z + Math.cos(t * .3 + i) * 2); k.rotation.set(Math.sin(t * 1.7 + i) * .15, Math.sin(t * .5 + i) * .6, Math.sin(t * 2.3 + i) * .35); });
+    kiteString.visible = day; const hand = flyer.root.position, kite = kites[0].position, sp = kiteString.geometry.attributes.position as T.BufferAttribute; sp.setXYZ(0, hand.x, hand.y + 1.25, hand.z); sp.setXYZ(1, kite.x, kite.y - .4, kite.z); sp.needsUpdate = true;
+    // Yoga: slow sun salutations, arms up and down with the breath.
+    const breath = (Math.sin(t * .6) + 1) / 2; yogi.shoulders[0].rotation.z = -2.8 * breath; yogi.shoulders[1].rotation.z = 2.8 * breath; yogi.body.rotation.x = Math.max(0, Math.sin(t * .3)) * .9 * (1 - breath); yogi.root.visible = w !== "rain";
+    // Pigeons: perched, bobbing; every so often the whole flock wheels round the block and lands again.
+    if (day && t > nextFlight && flight === 0) flight = .0001; if (flight > 0) { flight += dt / 12; if (flight >= 1) { flight = 0; nextFlight = t + 14 + (t % 9); } }
+    perch.forEach((p, i) => {
+      if (flight > 0) { const a = flight * Math.PI * 2 + i * .29, r = 7 + (i % 4), lift = Math.sin(flight * Math.PI) * 9; pigeon.position.set(p.x + Math.cos(a) * r - r, p.y + lift + Math.sin(t * 3 + i) * .3, p.z + Math.sin(a) * r); pigeon.rotation.set(0, -a, Math.sin(t * 9 + i) * .2); pigeon.scale.set(1, 1 + Math.sin(t * 22 + i) * .8, 1); }
+      else { pigeon.position.set(p.x, p.y + Math.abs(Math.sin(t * 2 + i * 1.3)) * .03, p.z); pigeon.rotation.set(0, Math.PI + Math.sin(t * .4 + i) * .5, 0); pigeon.scale.set(.55, .4, .7); }
+      pigeon.updateMatrix(); flock.setMatrixAt(i, pigeon.matrix);
+    }); flock.instanceMatrix.needsUpdate = true; flock.visible = w !== "night";
+    // TV light: a cool flicker, only after dark.
+    tvs.forEach((m, i) => { const on = w === "night" || w === "rain", f = .55 + .45 * Math.sin(t * (5 + i) + Math.sin(t * 13 + i * 4)) ; (m.material as T.MeshBasicMaterial).color.setRGB(on ? .25 * f : 0, on ? .45 * f : 0, on ? 1.1 * f : 0); });
+  } });
   // Birds circling over the park.
   const birdMat = new T.MeshStandardMaterial({ color: "#2b2b2b", roughness: .8, side: T.DoubleSide });
   const birds = Array.from({ length: 9 }, (_, i) => { const b = new T.Group(); for (const s of [-1, 1]) { const wing = new T.Mesh(new T.PlaneGeometry(.35, .12), birdMat); wing.position.x = s * .17; const pivot = new T.Group(); pivot.add(wing); b.add(pivot); } b.add(new T.Mesh(new T.CapsuleGeometry(.04, .14, 3, 6), birdMat)); b.children[2].rotation.x = Math.PI / 2; b.userData.seed = i; dynamic.add(b); return b; });

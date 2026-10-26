@@ -2,9 +2,10 @@ import * as T from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { cushion, mesh, lathe, rod, ceilingFan } from "./furniture";
+import { Cloth } from "./cloth";
 import { projects, skills } from "./content";
 import { type Area, colors as c, box, sphere, cylinder, tube, group, sign, plant, interactive, canvasTexture, disposeObject } from "./objects";
-import { fabric, ceramic, metal, emissive, surface, herringbone, rugTexture, weave, windify } from "./materials";
+import { fabric, ceramic, metal, emissive, surface, herringbone, rugTexture , weave } from "./materials";
 
 
 export function createBedroom(): Area {
@@ -32,9 +33,9 @@ export function createBedroom(): Area {
   for(const x of [-1.68,0,1.68])box(windowGroup,[.095,2.68,.18],[x,0,0],c.edge);
   for(const y of [-1.34,0,1.34])box(windowGroup,[3.45,.085,.18],[0,y,0],c.edge);
   box(windowGroup,[3.7,.14,.54],[0,-1.37,.12],c.cream);
-  const curtainMaterial=windify(fabric("#dccfb4",.95),{kind:"cloth",top:1.35,height:2.7,amp:.012});curtainMaterial.side=T.DoubleSide;
-  const curtains:T.Mesh[]=[];
-  for(const x of [-3.46,-.42]) {const geometry=new T.PlaneGeometry(.42,2.7,28,14);const a=geometry.attributes.position;for(let i=0;i<a.count;i++)a.setZ(i,Math.sin(a.getX(i)*52)*.042+Math.sin(a.getX(i)*17+a.getY(i)*.8)*.012);geometry.computeVertexNormals();const mesh=new T.Mesh(geometry,curtainMaterial);mesh.position.set(x,2.46,-2.99);mesh.castShadow=true;mesh.userData.dynamic=true;root.add(mesh);curtains.push(mesh);}
+  const curtainMaterial=fabric("#dccfb4",.95);curtainMaterial.side=T.DoubleSide; // moved by real cloth physics (cloth.ts)
+  const curtains:T.Mesh[]=[];const cloth:Cloth[]=[];
+  for(const x of [-3.46,-.42]) {const geometry=new T.PlaneGeometry(.42,2.7,28,14);const a=geometry.attributes.position;for(let i=0;i<a.count;i++)a.setZ(i,Math.sin(a.getX(i)*52)*.042+Math.sin(a.getX(i)*17+a.getY(i)*.8)*.012);geometry.computeVertexNormals();const mesh=new T.Mesh(geometry,curtainMaterial);mesh.position.set(x,2.46,-2.99);mesh.castShadow=true;mesh.userData.dynamic=true;root.add(mesh);curtains.push(mesh);cloth.push(new Cloth(mesh,28,14));}
   cylinder(root,.022,.022,3.72,[-1.94,3.9,-2.97],brass).rotation.z=Math.PI/2;
   for(const x of [-3.82,-.06])sphere(root,[.04,.04,.04],[x,3.9,-2.97],brass);
   // Workstation: oiled wooden top, powder-coated legs, working drawers, and a two-screen workspace.
@@ -98,15 +99,24 @@ export function createBedroom(): Area {
   const eye=new T.MeshPhysicalMaterial({color:"#1d1a17",roughness:.1,clearcoat:1});for(const x of [.07,.145])sphere(pet,[.012,.018,.008],[x,.12,.108],eye,12);
   sphere(pet,[.044,.026,.05],[-.06,-.025,.08],ceramic(c.rust,.5));sphere(pet,[.044,.026,.05],[.06,-.025,.08],ceramic(c.rust,.5));
   // Seat, rug and bedding add tactile softness to the cutaway.
-  cylinder(root,.035,.035,.52,[.6,.45,-.2],chrome);
-  const chair=interactive(group(root,[.6,0,-.2]),"chair","Turn the desk chair");chair.scale.y=.8;const upholstery=new T.MeshPhysicalMaterial({color:"#9a4824",roughness:.42,clearcoat:.35,clearcoatRoughness:.5,bumpMap:weave(),bumpScale:.2}); // cognac leather
-  mesh(chair,cushion(.83,.17,.74,.35,0,.07),[0,.8,0],upholstery);mesh(chair,cushion(.84,.78,.16,.12,0,.07),[0,1.22,.37],upholstery).rotation.x=-.06;
-  box(chair,[.5,.05,.4],[0,.69,0],plastic,.02);rod(chair,[0,.95,.3],[0,.72,.12],.025,plastic);
-  for(let i=0;i<5;i++){const a=i*Math.PI*2/5;tube(chair,[[0,.23,0],[Math.sin(a)*.42,.14,Math.cos(a)*.42]],.03,chrome);sphere(chair,[.055,.055,.04],[Math.sin(a)*.42,.11,Math.cos(a)*.42],plastic);}
+  // A proper task chair at true scale: five-star base on twin-wheel casters, chrome gas lift and tilt mechanism, a contoured
+  // cognac seat, a breathable mesh back on a reclined frame with a lumbar pad and headrest, and height-adjustable arms.
+  const chair=interactive(group(root,[.6,0,-.2]),"chair","Turn the desk chair");const upholstery=new T.MeshPhysicalMaterial({color:"#9a4824",roughness:.42,clearcoat:.35,clearcoatRoughness:.5,bumpMap:weave(),bumpScale:.2}); // cognac leather
+  const chairFrame=new T.MeshStandardMaterial({color:"#26221f",roughness:.45,metalness:.25}),chairMesh=new T.MeshStandardMaterial({color:"#201d1b",roughness:.9,bumpMap:weave(),bumpScale:1.4,side:T.DoubleSide});
+  for(let i=0;i<5;i++){const a=i*Math.PI*2/5,x=Math.sin(a)*.33,z=Math.cos(a)*.33;tube(chair,[[0,.12,0],[x*.6,.1,z*.6],[x,.075,z]],.022,chairFrame);box(chair,[.05,.03,.05],[x,.06,z],chairFrame,.01);
+   for(const d of [-.017,.017])cylinder(chair,.028,.028,.016,[x+Math.cos(a)*d,.03,z-Math.sin(a)*d],plastic,16).rotation.set(0,a,Math.PI/2);}
+  cylinder(chair,.05,.06,.05,[0,.13,0],chairFrame,24);cylinder(chair,.036,.036,.14,[0,.21,0],chairFrame,20);cylinder(chair,.026,.026,.16,[0,.33,0],chrome,20);
+  box(chair,[.26,.05,.24],[0,.41,0],chairFrame,.015);rod(chair,[.13,.41,.05],[.22,.4,.1],.008,chairFrame);
+  box(chair,[.5,.025,.47],[0,.435,-.01],chairFrame,.01);mesh(chair,cushion(.52,.09,.5,.4,0,.05),[0,.48,-.02],upholstery);
+  for(const x of [-.21,.21]){rod(chair,[x,.44,.22],[x,.6,.25],.016,chairFrame);rod(chair,[x,.6,.25],[x*1.02,1.08,.31],.016,chairFrame);}
+  rod(chair,[-.215,1.08,.31],[.215,1.08,.31],.016,chairFrame);const back=box(chair,[.4,.5,.012],[0,.83,.28],chairMesh,0);back.rotation.x=-.12;
+  mesh(chair,cushion(.34,.11,.05,.3,0,.03),[0,.66,.255],upholstery).rotation.x=-.12;rod(chair,[0,1.08,.31],[0,1.16,.33],.012,chairFrame);mesh(chair,cushion(.28,.11,.06,.35,0,.04),[0,1.21,.33],upholstery);
+  for(const x of [-.27,.27]){rod(chair,[x*.85,.43,.06],[x,.45,.06],.014,chairFrame);rod(chair,[x,.45,.06],[x,.64,.04],.016,chairFrame);box(chair,[.075,.03,.26],[x,.655,.01],plastic,.012);}
   const rug=new T.MeshStandardMaterial({color:"#cdc9c0",bumpMap:rugTexture(),bumpScale:2.2,roughness:1}); // pale grey flatweave
   box(root,[3.6,.018,2.36],[.23,.087,.92],rug,.008);
   const tassel=fabric(c.cream,1);for(let i=0;i<28;i++)for(const z of [-.29,2.12])box(root,[.018,.006,.11],[-1.45+i*.12,.083,z],tassel,0);
-  const bed=group(root,[-2.79,0,.65]);box(bed,[1.92,.39,3.5],[0,.39,0],c.wood,.05);
+  // The bed: two places to lie down (head on the pillow, looking up at the ceiling fan).
+  const bed=interactive(group(root,[-2.79,0,.65]),"sit:bed","Lie down on the bed");const perches:NonNullable<Area["perches"]>=[-.45,.45].map((x,i)=>({id:`bed-${i}`,group:"bed",at:group(bed,[x,.95,-1.05]),pose:"lie" as const}));box(bed,[1.92,.39,3.5],[0,.39,0],c.wood,.05);
   mesh(bed,cushion(1.78,.25,3.38,.12,0,.09),[0,.7,0],fabric("#f1eadb",.95));
   mesh(bed,cushion(1.86,.2,2.22,.42,.011,.09),[0,.89,.56],fabric("#34467a",.92));
   box(bed,[1.96,1.15,.13],[0,.63,-1.78],c.wood,.05);
@@ -150,7 +160,7 @@ export function createBedroom(): Area {
   const floorGlow=new T.PointLight("#ffd09a",3.5,3.5,2);floorGlow.position.set(-1.58,1.5,2.15);root.add(floorGlow);
   for(let i=0;i<3;i++){const tilt=(i-1)*.12;const b=box(root,[.57,.09,.42],[-1.55,.175+i*.095,1.29],[c.rust,c.sage,c.teal][i],.012);b.rotation.y=tilt;const p=box(root,[.54,.07,.4],[-1.53,.175+i*.095,1.29],pages,0);p.rotation.y=tilt;}
   const anchors=[{name:"The workstation",action:"projects" as const,point:new T.Vector3(.9,2.91,-1.95)},{name:"Knowledge shelf",action:"skills" as const,point:new T.Vector3(2.15,3.58,-2.78)},{name:"A little about me",action:"about" as const,point:new T.Vector3(-3.25,2.95,.56)}];
-  return {root,camera:[10,8.3,12],target:[0,1.45,0],anchors,seats:[{id:"computer",eye:deskEye,screen}],
+  return {root,camera:[10,8.3,12],target:[0,1.45,0],anchors,perches,seats:[{id:"computer",eye:deskEye,screen}],
     interact(action){if(action==="chair")chairTurn+=Math.PI/2;if(action==="drawer")drawerOpen=!drawerOpen;if(action==="pet")petUntil=performance.now()+2800;if(action==="keyboard")typingUntil=performance.now()+1500;},
     update(time,delta,options){
       chair.rotation.y=options.motion?T.MathUtils.damp(chair.rotation.y,chairTurn,7,delta):chairTurn;
@@ -161,7 +171,7 @@ export function createBedroom(): Area {
       if(options.motion)fan.blades.rotation.y-=delta*4.2*(options.fan??1);
       const open=drawerOpen?.62:0;drawer.position.z=options.motion?T.MathUtils.damp(drawer.position.z,open,9,delta):open;
       pet.scale.y=options.motion?1+Math.sin(time*1.4)*.035:1;pet.rotation.y=options.motion&&performance.now()<petUntil?Math.sin(time*3)*.24:0;
-      curtains.forEach((mesh,i)=>mesh.rotation.y=options.motion?Math.sin(time*.6+i)*.05:0);
+      for(const c of cloth)c.step(delta,options);
       if(performance.now()<typingUntil&&options.motion){for(let i=0;i<52;i++)keys.setMatrixAt(i,keyMatrix(i,Math.sin(time*20+i)> .75?.023:0));keys.instanceMatrix.needsUpdate=true;}else if(typingUntil){for(let i=0;i<52;i++)keys.setMatrixAt(i,keyMatrix(i));keys.instanceMatrix.needsUpdate=true;typingUntil=0;}
       const now=new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});if(now!==clockMinute){clockMinute=now;const map=clockFace.material.map!;const ctx=(map.image as HTMLCanvasElement).getContext("2d")!;ctx.fillStyle=c.dark;ctx.fillRect(0,0,512,128);ctx.fillStyle=c.amber;ctx.font="65px monospace";ctx.textAlign="center";ctx.fillText(now,256,87);map.needsUpdate=true;}
     },dispose(){alive=false;clearTimeout(duckTimer);clearTimeout(printTimer);}

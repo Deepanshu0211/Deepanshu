@@ -1,7 +1,7 @@
 import * as T from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { colors as c, box, cylinder, sphere, group, tube, arcSegments } from "./objects";
-import { fabric, ceramic, metal, emissive, surface, rugTexture, weave, windify } from "./materials";
+import { fabric, ceramic, metal, emissive, surface, rugTexture , weave } from "./materials";
 
 // Shared furniture kit. Every piece is built around its floor footprint, facing +z, so rooms place
 // furniture with a position and a turn. Proportions follow real furniture in metres.
@@ -97,7 +97,7 @@ export function frame(parent: T.Object3D, pos: number[], turn: number, w: number
 }
 /** A pair of pleated linen curtains on a brass rod. Returns the panels so rooms can sway them. */
 export function curtains(parent: T.Object3D, center: number[], span: number, height: number, turn = 0, color = "#dccfb4") {
-  const g = place(parent, center, turn), cloth = windify(fabric(color, .95), { kind: "cloth", top: height / 2, height, amp: .012 }); cloth.side = T.DoubleSide; const panels: T.Mesh[] = [];
+  const g = place(parent, center, turn), cloth = fabric(color, .95); cloth.side = T.DoubleSide; const panels: T.Mesh[] = []; // panels move as real cloth (cloth.ts)
   rod(g, [-span / 2 - .15, height / 2 + .08, 0], [span / 2 + .15, height / 2 + .08, 0], .016, finishes.brass());
   for (const x of [-1, 1]) {
     const geometry = new T.PlaneGeometry(.46, height, 28, 14), a = geometry.attributes.position;

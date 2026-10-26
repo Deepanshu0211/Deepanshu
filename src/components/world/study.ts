@@ -2,6 +2,7 @@ import * as T from "three";
 import { skills, profile, experience } from "./content";
 import { type Area, colors as c, box, sphere, cylinder, group, sign, plant, interactive, canvasTexture, batchScenery } from "./objects";
 import { fabric, ceramic, metal, emissive, geoRug } from "./materials";
+import { Cloth } from "./cloth";
 import { table, chair, armchair, rug, curtains, pendant, frame, books, mug, place, mesh, lathe, rod, finishes } from "./furniture";
 
 // A simple earth for the globe: ocean, soft continents, a graticule.
@@ -56,7 +57,7 @@ export function createStudy(): Area {
   for (const leaf of leaves) { batchScenery(leaf); leaf.userData.dynamic = true; }
   // Writing desk under the window: open laptop, the journal, a letter, a lamp.
   table(root, [0, 0, 2.85], [1.6, .76, .7], oak, walnut);
-  chair(root, [0, 0, 2.2], 0, oak, fabric("#2f4f43", .9));
+  const perches: NonNullable<Area["perches"]> = [{ id: "study-desk", group: "study-desk", at: group(interactive(chair(root, [0, 0, 2.2], 0, oak, fabric("#2f4f43", .9)), "sit:study-desk", "Sit at the writing desk"), [0, .5, .02]) }];
   const laptop = interactive(place(root, [.05, .76, 2.85], Math.PI), "laptop", "Sit down and use the laptop"); const alu = metal("#b9bcb8", .3);
   box(laptop, [.34, .012, .24], [0, .006, 0], alu, .006); const lid = group(laptop, [0, .012, -.12]); lid.rotation.x = -.35; box(lid, [.34, .24, .008], [0, .12, 0], alu, .006);
   const code = canvasTexture(ctx => { ctx.fillStyle = "#1e1a17"; ctx.fillRect(0, 0, 512, 360); ctx.font = "16px monospace"; ["export function Home() {", "  return <World", "    rooms={5}", "    weather=\"rain\"", "    curious", "  />;", "}", "", "// keep making things_"].forEach((line, i) => { ctx.fillStyle = i > 7 ? "#d6ae73" : "#e3d6bc"; ctx.fillText(line, 24, 40 + i * 30); }); }, 512, 360);
@@ -70,9 +71,9 @@ export function createStudy(): Area {
   const deskLamp = place(root, [.72, .76, 3.05]); cylinder(deskLamp, .07, .08, .02, [0, .01, 0], finishes.brass(), 24); rod(deskLamp, [0, .02, 0], [0, .38, 0], .008, finishes.brass());
   lathe(deskLamp, [[.02, 0], [.06, -.01], [.1, -.12]], [0, .42, 0], new T.MeshPhysicalMaterial({ color: "#2f4f43", roughness: .35, clearcoat: .6, side: T.DoubleSide }), 32);
   const deskBulb = sphere(deskLamp, [.03, .03, .03], [0, .36, 0], emissive(c.amber, 3), 16);
-  curtains(root, [0, 1.98, 3.08], 2.8, 2.5, Math.PI, "#8fb3a3");
+  const drapes = curtains(root, [0, 1.98, 3.08], 2.8, 2.5, Math.PI, "#8fb3a3").map(panel => new Cloth(panel, 28, 14));
   // Reading corner: armchair, side table, a lamp and a stack of books.
-  armchair(root, [2.9, 0, -2.2], -.75, "#9cbcae"); // sage velvet
+  perches.push({ id: "study-armchair", group: "study-armchair", at: group(interactive(armchair(root, [2.9, 0, -2.2], -.75, "#9cbcae"), "sit:study-armchair", "Sink into the reading chair"), [0, .5, .06]) }); // sage velvet
   table(root, [2.2, 0, -2.85], [.45, .55, .45], walnut, walnut, true);
   books(root, [2.07, .55, -2.85], .25, 3).forEach(b => { b.rotation.z = Math.PI / 2; b.position.y = .03 + (b.position.x - .02) * .0; });
   const reading = place(root, [3.5, 0, -2.85]); cylinder(reading, .14, .15, .03, [0, .015, 0], metal("#2a2622", .45), 32); rod(reading, [0, .03, 0], [0, 1.45, 0], .012, metal("#2a2622", .45));
@@ -132,13 +133,14 @@ export function createStudy(): Area {
   plant(root, [-2.9, 0, 2.85], 1.5);
   let spin = 0;
   return {
-    root, camera: [0, 1.65, 0], target: [0, 1, 0], anchors: [], seats: [{ id: "laptop", eye: place(root, [.05, 1.17, 2.32]), screen }],
+    root, camera: [0, 1.65, 0], target: [0, 1, 0], anchors: [], perches, seats: [{ id: "laptop", eye: place(root, [.05, 1.17, 2.32]), screen }],
     movers: leaves.map((hinge, i) => ({ hinge, size: [1.43, 2.6, .38], center: [(i ? -1 : 1) * .725, 1.3, -.19] })),
     interact(action) { if (action === "globe") spin = 6; },
     reveal() { opening = 1; },
     conceal() { opening = 0; },
     busy: () => open !== opening,
     update(time, delta, options) {
+      for (const d of drapes) d.step(delta, options);
       const playing = options.music === true; // the platter turns while a song really plays
       if (options.motion) { if (playing) platter.rotation.y -= delta * 3.5; spin = Math.max(0, spin - delta * 2); world.rotation.y += delta * (.12 + spin); }
       arm.rotation.y = playing ? -.25 : 0;

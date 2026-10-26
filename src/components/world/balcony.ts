@@ -37,13 +37,15 @@ export function createBalcony(): Area {
   const seatCorners = [[-.55, -.2], [.55, -.2], [-.55, .2], [.55, .2]].map(([x, z]) => sim.add(new T.Vector3(-2 + x, .8, -2.05 + z), .2));
   for (const [a, b] of [[0, 1], [2, 3], [0, 2], [1, 3], [0, 3], [1, 2]]) sim.link(seatCorners[a], seatCorners[b]);
   const swingRopes = seatCorners.map((id, i) => sim.rope(sim.add(new T.Vector3(-2 + (i % 2 ? .55 : -.55), 3.03, -2.05 + (i < 2 ? -.07 : .07)), 0), id, 12));
-  const seat = interactive(group(root, [0, 0, 0]), "swing", "Give the swing a push"); seat.matrixAutoUpdate = false; seat.userData.noCollide = true;
+  const seat = interactive(group(root, [0, 0, 0]), "sit:swing", "Sit on the swing"); seat.matrixAutoUpdate = false; seat.userData.noCollide = true;
   box(seat, [1.2, .06, .5], [0, -.3, 0], pergolaWood, .01); box(seat, [1.2, .45, .05], [0, -.05, -.24], pergolaWood, .01); for (const x of [-.58, .58]) box(seat, [.05, .3, .5], [x, -.13, 0], pergolaWood, .01);
   mesh(seat, cushion(1.05, .08, .42, .5, .004, .04), [0, -.23, .02], fabric("#b4532a", .95)); mesh(seat, cushion(.36, .3, .1, .8, 0, .05), [-.3, -.08, -.17], fabric("#e0a526", .95)).rotation.x = -.15;
   // Chai for two, and the postcard that says hello.
   table(root, [-.8, 0, .1], [.62, .55, .62], finishes.walnut(), finishes.walnut(), true);
   const cane = new T.MeshStandardMaterial({ color: "#b48a55", roughness: .8 });
-  chair(root, [-1.5, 0, .05], Math.PI / 2, cane, fabric("#2f4f43", .9)); chair(root, [-.8, 0, .85], Math.PI, cane, fabric(c.rust, .9));
+  // Two chairs for chai, and the swing: all of them take a seat.
+  const perches: NonNullable<Area["perches"]> = ([[-1.5, .05, Math.PI / 2, "#2f4f43"], [-.8, .85, Math.PI, c.rust]] as [number, number, number, string][]).map(([x, z, turn, color], i) => ({ id: `balcony-${i}`, group: "balcony", at: group(interactive(chair(root, [x, 0, z], turn, cane, fabric(color, .9)), "sit:balcony", "Sit down for chai"), [0, .5, .02]) }));
+  perches.push({ id: "swing", group: "swing", at: group(seat, [0, -.2, .03]) }); // rides the swing as it rocks
   chaiGlass(root, [-.9, .55, .0]); chaiGlass(root, [-.68, .55, .2]);
   lathe(root, [[0, 0], [.1, 0], [.11, .012], [0, .006]], [-.72, .55, -.05], ceramic("#f1ece1", .25), 32);
   for (let i = 0; i < 4; i++) cylinder(root, .025, .025, .008, [-.72 + Math.cos(i * 1.6) * .05, .565 + (i % 2) * .008, -.05 + Math.sin(i * 1.6) * .05], new T.MeshStandardMaterial({ color: "#d1a15b", roughness: .9 }), 16);
@@ -96,8 +98,8 @@ export function createBalcony(): Area {
   const breeze = (p: T.Vector3, i: number) => gust.set(Math.sin(clock * 1.3 + p.x * 1.7 + i * .3) * 1.4 + .6, Math.sin(clock * 2.1 + i) * .3, Math.cos(clock * .9 + p.z * 2) * .9).multiplyScalar(wind);
   const wallLamp = place(root, [0, 2.6, -3.15]); box(wallLamp, [.14, .2, .06], [0, 0, 0], tripod, .01); const lampGlass = sphere(wallLamp, [.07, .09, .07], [0, -.02, .08], emissive("#fff1d6", 1.8), 20);
   return {
-    root, camera: [9, 7, 11], target: [0, 1.2, 0], anchors: [{ name: "A quiet hello", action: "contact", point: new T.Vector3(-.95, 1.2, .3) }, { name: "Telescope", action: "telescope", point: new T.Vector3(3, 2.2, 2.2) }],
-    interact(action) { if (action === "swing") sim.push(seatCorners, new T.Vector3(0, .15, 1.9)); },
+    root, camera: [9, 7, 11], target: [0, 1.2, 0], perches, anchors: [{ name: "A quiet hello", action: "contact", point: new T.Vector3(-.95, 1.2, .3) }, { name: "Telescope", action: "telescope", point: new T.Vector3(3, 2.2, 2.2) }],
+    interact(action) { if (action === "swing" || action === "sit:swing") sim.push(seatCorners, new T.Vector3(0, .15, 1.9)); },
     update(time, delta, options) {
       // Fixed 60 Hz physics steps; with motion off the ropes stay at rest.
       wind = options.weather === "rain" ? 2.4 : options.weather === "night" ? .6 : 1.1;
