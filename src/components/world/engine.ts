@@ -1,6 +1,7 @@
 import * as T from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
+import { Capsule } from "three/addons/math/Capsule.js";
 import { createBedroom } from "./bedroom";
 import { type Action,type Area,type Location,type WorldOptions,type Weather,disposeObject,batchScenery,collidersFrom,freezeStatic,shadowProxy } from "./objects";
 import { createBuilding,rooms } from "./building";
@@ -129,7 +130,19 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   player.clear();player.seated={x:seatAt.x,z:seatAt.z,eye:seatAt.y+.68};player.face(Math.atan2(-seatFwd.x,-seatFwd.z));
   callbacks.notice("Press W, A, S, D or Space to stand up.");lastRender=0;
  }
- function standUp(){if(!perched)return;perched.at.getWorldPosition(seatAt);perched.at.getWorldDirection(seatFwd);perched=null;player.seated=null;player.place(seatAt.x+seatFwd.x*.65,seatAt.z+seatFwd.z*.65,player.yaw,player.pitch);lastRender=0;}
+ // Standing up lands where you fit: behind the seat (pushing a chair back), else in front, else to a side. A chair faces
+ // a table, and standing inside the table pushed you down through the floor.
+ function standUp(){if(!perched)return;perched.at.getWorldPosition(seatAt);perched.at.getWorldDirection(seatFwd);perched=null;player.seated=null;
+  const f=seatFwd,[x,z]=clearSpot(seatAt.x,seatAt.z,[[-f.x*.65,-f.z*.65],[f.x*.65,f.z*.65],[f.z*.65,-f.x*.65],[-f.z*.65,f.x*.65]]);player.place(x,z,player.yaw,player.pitch);lastRender=0;}
+ // Whether the walker's capsule can stand at a spot without touching walls, furniture, doors or the moving shelf.
+ const probe=new Capsule(new T.Vector3(),new T.Vector3(),.24);
+ function fits(x:number,z:number){probe.start.set(x,.3,z);probe.end.set(x,1.52,z);if(building.tree.capsuleIntersect(probe))return false;for(const f of building.furniture)if(f.capsuleIntersect(probe))return false;for(const d of building.doors)if(building.doorCollision(d,probe))return false;for(const m of building.movers)if(building.doorCollision(m,probe))return false;return true;}
+ /** The first preferred offset that fits, else the nearest clear spot in widening rings. */
+ function clearSpot(x:number,z:number,prefer:[number,number][]):[number,number]{
+  for(const [dx,dz] of prefer)if(fits(x+dx,z+dz))return [x+dx,z+dz];
+  for(let r=.3;r<=3;r+=.3)for(let a=0;a<16;a++){const px=x+Math.cos(a*Math.PI/8)*r,pz=z+Math.sin(a*Math.PI/8)*r;if(fits(px,pz))return [px,pz];}
+  return [x,z];
+ }
  // Doorways for the sound engine: where each opening is, refreshed with how open the door is.
  const doorSounds:DoorSound[]=building.doors.map(d=>{const c=d.portal.getCenter(new T.Vector3());return {rooms:d.rooms,open:0,x:c.x,y:c.y,z:c.z};});
  // Seated mode: the camera eases from the walker into a chair and squares up to a screen.
@@ -317,6 +330,8 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   const wasGrounded=player.grounded,fallSpeed=player.velocity.y;
   if(secretCloseAt&&now>secretCloseAt)closeSecret(now);
   building.update(dt,player.capsule,options.motion);player.update(dt,options.motion);
+  // Safety net: anyone who ever ends up below the floor is set back on their feet in the room they were in.
+  if(player.capsule.start.y<-3){const [cx,cz]=rooms[areaId].center,[x,z]=clearSpot(cx,cz,[[0,0]]);player.place(x,z,player.yaw,player.pitch);}
   updateRemotes(dt);
   const speed=Math.hypot(player.velocity.x,player.velocity.z);self.root.visible=(player.active||Boolean(perched))&&!seat&&seatBlend===0;
   if(self.root.visible&&perched){perched.at.getWorldPosition(seatAt);perched.at.getWorldDirection(seatFwd);self.root.position.set(seatAt.x,seatAt.y-SEAT_DROP,seatAt.z);self.root.rotation.y=Math.atan2(seatFwd.x,seatFwd.z);stride(self,0,0);sitPose(self);}
