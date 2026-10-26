@@ -1,6 +1,6 @@
 import * as T from "three";
 import { skills, profile, experience } from "./content";
-import { type Area, colors as c, box, sphere, cylinder, group, sign, plant, interactive, canvasTexture } from "./objects";
+import { type Area, colors as c, box, sphere, cylinder, group, sign, plant, interactive, canvasTexture, batchScenery } from "./objects";
 import { fabric, ceramic, metal, emissive } from "./materials";
 import { table, chair, armchair, rug, curtains, pendant, frame, books, mug, place, mesh, lathe, rod, finishes } from "./furniture";
 
@@ -15,26 +15,45 @@ function earth() {
 }
 
 export function createStudy(): Area {
-  const root = new T.Group(); let alive = true, playing = false;
+  const root = new T.Group(); let alive = true, playing = false, open = 0, opening = 0;
   const walnut = finishes.walnut(), oak = finishes.oak();
   rug(root, [0, 0, -.2], [2.8, 3.4], "#d9c9b0");
-  // Built-in library wall. Two eye-level shelves hold the skills, labelled on their spines.
-  const shelf = place(root, [-3.7, 0, 0], Math.PI / 2);
-  box(shelf, [5.8, 2.6, .04], [0, 1.3, -.17], walnut, 0);
-  for (const x of [-2.9, -1.45, 0, 1.45, 2.9]) box(shelf, [.04, 2.6, .38], [x, 1.3, 0], walnut, .006);
+  // Built-in library wall. Two eye-level shelves hold the skills, labelled on their spines. The middle two bays are
+  // sliding panels: when a member signs in they part from the centre to either side, showing the hidden door.
+  const shelf = place(root, [-3.7, 0, 0], Math.PI / 2), loose: T.Object3D[] = [];
   const levels = [.08, .52, .96, 1.4, 1.84, 2.28, 2.6];
-  for (const y of levels) box(shelf, [5.84, .035, .38], [0, y, 0], walnut, .006);
+  const leaves = [-1, 1].map(side => {
+    box(shelf, [1.45, 2.6, .04], [side * 2.175, 1.3, -.17], walnut, 0);
+    for (const x of [1.45, 2.9]) box(shelf, [.04, 2.6, .38], [side * x, 1.3, 0], walnut, .006);
+    for (const y of levels) box(shelf, [1.47, .035, .38], [side * 2.185, y, 0], walnut, .006);
+    // The panel, from its outer front corner: a back, a stile where the two meet, and its own boards.
+    const leaf = group(shelf, [side * 1.45, 0, .19]); leaf.userData.noCollide = true;
+    box(leaf, [1.41, 2.6, .04], [-side * .725, 1.3, -.36], walnut, 0); box(leaf, [.02, 2.6, .38], [-side * 1.44, 1.3, -.19], walnut, .004);
+    for (const y of levels) box(leaf, [1.39, .035, .38], [-side * .735, y, -.19], walnut, .006);
+    return leaf;
+  });
+  // A small brass button on the inside of the right-hand wall, at hand height, where only someone who knows would look.
+  const button = interactive(group(shelf, [2.88, levels[2] + .2, .07]), "secret", "A small brass button");
+  box(button, [.008, .13, .09], [-.004, 0, 0], finishes.brass(), .003); cylinder(button, .018, .02, .016, [-.012, 0, 0], metal("#c9a45c", .25), 24).rotation.z = Math.PI / 2;
   const skillPalette = [c.rust, "#2f4f43", "#c9a75a", "#4a5a7a", "#6d7b55", "#e2d6bd", "#7a4b3a"];
   skills.forEach((skill, i) => {
     const row = i < 7 ? 3 : 4, slot = i % 7, x = -2.75 + slot * .78, h = .32 + (i % 3) * .03;
-    const b = interactive(group(shelf, [x, levels[row] + .018 + h / 2, .02]), `skill:${skill}`, skill);
+    const b = interactive(group(shelf, [x, levels[row] + .018 + h / 2, .02]), `skill:${skill}`, skill); loose.push(b);
     const cover = skillPalette[i % skillPalette.length]; box(b, [.075, h, .24], [0, 0, 0], new T.MeshStandardMaterial({ color: cover, roughness: .65 }), .006);
     sign(b, skill, [0, 0, .121], .2, .045, cover, i % 7 === 5 ? c.edge : c.cream).rotation.z = Math.PI / 2;
     box(b, [.068, .004, .22], [0, h / 2 + .002, -.004], new T.MeshStandardMaterial({ color: "#efe7d4" }), 0);
-    books(shelf, [x + .05, levels[row] + .018, .02], .62, i);
+    loose.push(...books(shelf, [x + .05, levels[row] + .018, .02], .62, i));
   });
-  for (const [row, seed] of [[0, 2], [1, 5], [2, 8], [5, 11]]) for (let bay = 0; bay < 4; bay++) books(shelf, [-2.86 + bay * 1.45, levels[row] + .018, .02], bay === 1 && row === 2 ? .7 : 1.36, seed + bay);
-  plant(shelf, [-.7, levels[4] + .02, 0], .45); sphere(shelf, [.07, .07, .07], [2.2, levels[4] + .09, 0], ceramic("#e0a526", .25), 24);
+  for (const [row, seed] of [[0, 2], [1, 5], [2, 8], [5, 11]]) for (let bay = 0; bay < 4; bay++) loose.push(...books(shelf, [-2.86 + bay * 1.45, levels[row] + .018, .02], bay === 1 && row === 2 ? .7 : bay === 3 && row === 2 ? 1 : 1.36, seed + bay));
+  loose.push(plant(shelf, [-.7, levels[4] + .02, .1], .45)); sphere(shelf, [.07, .07, .07], [2.2, levels[4] + .09, 0], ceramic("#e0a526", .25), 24);
+  // Whatever stands in the middle bays rides on its panel; each panel's scenery is merged before it is marked as moving.
+  root.updateMatrixWorld(true); const spot = new T.Vector3();
+  // Books straddling the seam or a panel's outer edge would poke out of an open panel, so they come off the shelf (never drawn, nothing to free).
+  for (const item of loose) {
+    shelf.worldToLocal(item.getWorldPosition(spot)); const x = Math.abs(spot.x);
+    if (x < .06 || (x > 1.39 && x < 1.51)) item.removeFromParent(); else if (x < 1.45) leaves[spot.x < 0 ? 0 : 1].attach(item);
+  }
+  for (const leaf of leaves) { batchScenery(leaf); leaf.userData.dynamic = true; }
   // Writing desk under the window: open laptop, the journal, a letter, a lamp.
   table(root, [0, 0, 2.85], [1.6, .76, .7], oak, walnut);
   chair(root, [0, 0, 2.2], 0, oak, fabric("#2f4f43", .9));
@@ -112,10 +131,21 @@ export function createStudy(): Area {
   let spin = 0;
   return {
     root, camera: [0, 1.65, 0], target: [0, 1, 0], anchors: [], seats: [{ id: "laptop", eye: place(root, [.05, 1.17, 2.32]), screen }],
+    movers: leaves.map((hinge, i) => ({ hinge, size: [1.43, 2.6, .38], center: [(i ? -1 : 1) * .725, 1.3, -.19] })),
     interact(action) { if (action === "record") playing = !playing; if (action === "globe") spin = 6; },
+    reveal() { opening = 1; },
+    conceal() { opening = 0; },
+    busy: () => open !== opening,
     update(time, delta, options) {
       if (options.motion) { if (playing) platter.rotation.y -= delta * 3.5; spin = Math.max(0, spin - delta * 2); world.rotation.y += delta * (.12 + spin); }
       arm.rotation.y = playing ? -.25 : 0;
+      // The panels ease out of the wall, then slide apart along it, each coming to rest in front of its outer bay;
+      // closing runs the same path backwards.
+      if (open !== opening) {
+        open = !options.motion ? opening : opening > open ? Math.min(opening, open + delta * .4) : Math.max(opening, open - delta * .4);
+        const ease = (t: number) => t * t * (3 - 2 * t), out = ease(Math.min(1, open / .3)), apart = ease(Math.max(0, (open - .3) / .7));
+        leaves.forEach((leaf, i) => { leaf.position.set((i ? 1 : -1) * 1.45 * (1 + apart), 0, .19 + out * .42); });
+      }
       (deskBulb.material as T.MeshBasicMaterial).color.set(c.amber).multiplyScalar(options.weather === "day" ? 1.4 : 3);
       drum.emissiveIntensity = options.weather === "day" ? .15 : .45;
     },

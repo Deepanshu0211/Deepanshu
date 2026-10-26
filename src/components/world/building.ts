@@ -1,16 +1,17 @@
 import * as T from "three";
 import { Octree } from "three/addons/math/Octree.js";
 import { Capsule } from "three/addons/math/Capsule.js";
-import { box, group, colors as c, interactive, batchScenery, type Location } from "./objects";
+import { box, group, sign, colors as c, interactive, batchScenery, type Location } from "./objects";
 import { floorboards, surface, tiles, projected, metal } from "./materials";
 
 // A fourth-floor flat: bedroom, living room, kitchen, study and an open balcony. Room ids are stable
 // (they key lazy loading and saved state); the labels are what a visitor sees.
 export const rooms: Record<Location,{center:[number,number];label:string}> = {
  bedroom:{center:[0,0],label:"The bedroom"}, archive:{center:[8,0],label:"The living room"},
- workshop:{center:[16,0],label:"The kitchen"},library:{center:[8,6.5],label:"The study"},rooftop:{center:[16,6.5],label:"The balcony"}
+ workshop:{center:[16,0],label:"The kitchen"},library:{center:[8,6.5],label:"The study"},rooftop:{center:[16,6.5],label:"The balcony"},
+ vault:{center:[2,6.5],label:"The hidden room"}
 };
-export interface Door { id:string; hinge:T.Group; leaf:T.Mesh; angle:number; target:number; base:number; destination:Location; tree:Octree; /** The opening, for portal culling. */ portal:T.Box3; rooms:[Location,Location]; }
+export interface Door { id:string; hinge:T.Group; leaf:T.Mesh; angle:number; target:number; base:number; destination:Location; tree:Octree; /** The opening, for portal culling. */ portal:T.Box3; rooms:[Location,Location]; /** Which way it opens (+1 or -1). */ swing:number; /** Members only: no one can open it until it is unlocked. */ locked:boolean; }
 type Opening=[from:number,to:number,bottom:number,top:number];
 export function createBuilding(){
  const root=new T.Group(),colliders=new T.Group();const doors:Door[]=[];const lights:T.PointLight[]=[];
@@ -34,7 +35,7 @@ export function createBuilding(){
   seg(cursor,to,0,4.4);
   solid(axis==="z"?[to-from,4.4,.18]:[.18,4.4,to-from],axis==="z"?[(from+to)/2,2.2,fixed]:[fixed,2.2,(from+to)/2]);
  }
- function doorway(axis:"x"|"z",fixed:number,from:number,to:number,center:number,id:string,destination:Location){
+ function doorway(axis:"x"|"z",fixed:number,from:number,to:number,center:number,id:string,destination:Location,swing=axis==="x"?1:-1,locked=false){
    const width=1.5,low=center-width/2,high=center+width/2;
    if(axis==="x"){wall([.18,4.4,low-from],[fixed,2.2,(from+low)/2]);wall([.18,4.4,to-high],[fixed,2.2,(high+to)/2]);wall([.18,1.84,width],[fixed,3.48,center]);}
    else{wall([low-from,4.4,.18],[(from+low)/2,2.2,fixed]);wall([to-high,4.4,.18],[(high+to)/2,2.2,fixed]);wall([width,1.84,.18],[center,3.48,fixed]);}
@@ -48,7 +49,7 @@ export function createBuilding(){
    for(const x of [-.78,.78])box(frame,[.07,2.6,.26],[x,1.3,0],frameWood,.012);box(frame,[1.63,.1,.26],[0,2.57,0],frameWood,.012);
    const collision=new T.Mesh(new T.BoxGeometry(width,2.56,.085));collision.position.set(width/2,1.28,0);collision.updateMatrixWorld();const tree=new Octree().fromGraphNode(collision);collision.geometry.dispose();(collision.material as T.Material).dispose();
    const portal=axis==="x"?new T.Box3(new T.Vector3(fixed-.25,0,low),new T.Vector3(fixed+.25,2.6,high)):new T.Box3(new T.Vector3(low,0,fixed-.25),new T.Vector3(high,2.6,fixed+.25));
-   const door={id,hinge,leaf,base,angle:0,target:0,destination,tree,portal,rooms:id.split("-") as [Location,Location]};doors.push(door);
+   const door={id,hinge,leaf,base,angle:0,target:0,destination,tree,portal,rooms:id.split("-") as [Location,Location],swing,locked};doors.push(door);
  }
  solid([40,.2,30],[7,-.12,3]);
  // Bedroom: its window wall is modelled in the bedroom itself.
@@ -59,7 +60,13 @@ export function createBuilding(){
  wall([.18,4.4,6.5],[20,2.2,0]);
  doorway("x",12,-3.25,3.25,1.1,"archive-workshop","workshop");
  doorway("z",3.25,4,12,8,"archive-library","library");
- wall([8,4.4,.18],[16,2.2,3.25]);wall([.18,4.4,6.5],[4,2.2,6.5]);
+ wall([8,4.4,.18],[16,2.2,3.25]);
+ // Behind the study bookshelf: a locked door into the hidden room, which only members can open. It swings into the hidden room.
+ doorway("x",4,3.25,9.75,6.5,"library-vault","vault",-1,true);
+ // A framed photo of the members on its study face (the hinge's -z side), captioned underneath.
+ {const art=group(doors[doors.length-1].hinge,[.75,0,-.045]);art.rotation.y=Math.PI;const photo=new T.TextureLoader().load("/images/global-friends.webp");photo.colorSpace=T.SRGBColorSpace;
+  box(art,[.86,.86,.02],[0,1.6,0],frameWood,.006);const picture=new T.Mesh(new T.PlaneGeometry(.78,.78),new T.MeshStandardMaterial({map:photo,roughness:.6}));picture.position.set(0,1.6,.011);art.add(picture);
+  sign(art,"Global friends",[0,1.07,.003],.7,.13,"#efe7d4",c.edge);}wall([.18,4.4,6.5],[0,2.2,6.5]);wall([4,4.4,.18],[2,2.2,9.75]);
  windowWall("z",9.75,4,12,[[6.6,9.4,.95,3.0]]);
  doorway("x",12,3.25,9.75,7.2,"library-rooftop","rooftop");
  const floors:Record<Location,T.Material>={
@@ -68,13 +75,16 @@ export function createBuilding(){
   workshop:projected(new T.MeshPhysicalMaterial({map:tiles("cement"),roughness:.55,clearcoat:.35,clearcoatRoughness:.3}),1),
   library:projected(new T.MeshPhysicalMaterial({color:"#8f6a4c",map:floorboards(),bumpMap:floorboards(),bumpScale:1.4,roughness:.5,clearcoat:.25,clearcoatRoughness:.45}),2.4),
   rooftop:projected(new T.MeshPhysicalMaterial({map:tiles("kota"),bumpMap:tiles("kota"),bumpScale:.6,roughness:.62,clearcoat:.15}),2.4),
+  vault:projected(new T.MeshPhysicalMaterial({color:"#6e4b35",map:floorboards(),bumpMap:floorboards(),bumpScale:1.4,roughness:.55,clearcoat:.2,clearcoatRoughness:.5}),2.4),
  };
  // Every room light hangs from a visible fitting: a flush-mount opal dome on a brass rim.
- const lamps:Record<Location,[number,number,number]>={bedroom:[1.5,4.05,.4],archive:[6.6,4.05,1.2],workshop:[16,4.05,-1.3],library:[8,4.05,5.6],rooftop:[16,2.6,3.5]};
+ const lamps:Record<Exclude<Location,"vault">,[number,number,number]>={bedroom:[1.5,4.05,.4],archive:[6.6,4.05,1.2],workshop:[16,4.05,-1.3],library:[8,4.05,5.6],rooftop:[16,2.6,3.5]};
  const opal=new T.MeshBasicMaterial({color:new T.Color("#fff1d8").multiplyScalar(1.7)});
  for(const [name,room] of Object.entries(rooms) as [Location,typeof rooms[Location]][]){
-   const [x,z]=room.center;
-   if(name!=="bedroom")box(root,[7.95,.045,6.45],[x,0,z],floors[name],0);
+   const [x,z]=room.center,w=name==="vault"?4:8;
+   if(name!=="bedroom")box(root,[w-.05,.045,6.45],[x,0,z],floors[name],0);
+   // The hidden room has no ceiling fitting: its own lamps stay on (vault.ts).
+   if(name==="vault"){wall([w,.16,6.5],[x,4.44,z],"#f3eee4");continue;}
    const light=new T.PointLight("#ffd3a0",8,name==="rooftop"?7:9,2);light.position.set(...lamps[name]);root.add(light);lights.push(light);
    if(name==="rooftop")continue;
    const [lx,,lz]=lamps[name];const dome=new T.Mesh(new T.SphereGeometry(.24,32,12,0,Math.PI*2,Math.PI/2,Math.PI/2),opal);dome.scale.y=.45;dome.position.set(lx,4.36,lz);root.add(dome);
@@ -90,15 +100,18 @@ export function createBuilding(){
  colliders.traverse(o=>{if(o instanceof T.Mesh){o.geometry.dispose();(o.material as T.Material).dispose();}});
  batchScenery(root);
  const local=new Capsule(),inverse=new T.Matrix4();
- function doorCollision(door:Door,capsule:Capsule){door.hinge.updateMatrixWorld(true);inverse.copy(door.hinge.matrixWorld).invert();local.copy(capsule);local.start.applyMatrix4(inverse);local.end.applyMatrix4(inverse);const hit=door.tree.capsuleIntersect(local);if(hit)hit.normal.transformDirection(door.hinge.matrixWorld);return hit;}
+ function doorCollision(door:{hinge:T.Object3D;tree:Octree},capsule:Capsule){door.hinge.updateMatrixWorld(true);inverse.copy(door.hinge.matrixWorld).invert();local.copy(capsule);local.start.applyMatrix4(inverse);local.end.applyMatrix4(inverse);const hit=door.tree.capsuleIntersect(local);if(hit)hit.normal.transformDirection(door.hinge.matrixWorld);return hit;}
  const furniture:Octree[]=[];
  /** Add a room's furniture collision, built from its meshes. */
  function addFurniture(parts:T.Group){parts.updateMatrixWorld(true);if(parts.children.length)furniture.push(new Octree().fromGraphNode(parts));parts.traverse(o=>{if(o instanceof T.Mesh)o.geometry.dispose();});}
- return {root,tree,doors,lights,furniture,addFurniture,doorCollision,update(dt:number,player:Capsule,motion:boolean){
+ // Swinging furniture (the bookshelf doors): collision is one box in the pivot's own space, tested like a door.
+ const movers:{hinge:T.Object3D;tree:Octree}[]=[];
+ function addMover(hinge:T.Object3D,size:[number,number,number],center:[number,number,number]){const box=new T.Mesh(new T.BoxGeometry(...size));box.position.set(...center);box.updateMatrixWorld();movers.push({hinge,tree:new Octree().fromGraphNode(box)});box.geometry.dispose();(box.material as T.Material).dispose();}
+ return {root,tree,doors,lights,furniture,addFurniture,movers,addMover,doorCollision,update(dt:number,player:Capsule,motion:boolean){
    for(const door of doors){const old=door.angle;const next=motion?T.MathUtils.damp(old,door.target,7,dt):door.target;if(Math.abs(old-next)<.0001)continue;
      door.angle=next;door.hinge.rotation.y=door.base+next;const hit=doorCollision(door,player);
      if(hit&&hit.depth>.035){door.angle=old;door.hinge.rotation.y=door.base+old;door.target=old;}
    }
- },toggle(id:string){const door=doors.find(d=>d.id===id);if(!door)return;door.target=Math.abs(door.target)<.3?(door.base<0?1:-1)*Math.PI*.53:0;door.hinge.userData.label=`${Math.abs(door.target)>.3?"Close":"Open"} door · ${rooms[door.destination].label}`;return door;}};
+ },toggle(id:string){const door=doors.find(d=>d.id===id);if(!door)return;door.target=Math.abs(door.target)<.3?door.swing*Math.PI*.53:0;door.hinge.userData.label=`${Math.abs(door.target)>.3?"Close":"Open"} door · ${rooms[door.destination].label}`;return door;}};
 }
 export type Building=ReturnType<typeof createBuilding>;

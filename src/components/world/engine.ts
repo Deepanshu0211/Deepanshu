@@ -124,7 +124,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  const sky=new T.Color(),keyColor=new T.Color(),groundColor=new T.Color(),fillColor=new T.Color(),keyPosition=new T.Vector3();
  const ray=new T.Raycaster();const center=new T.Vector2(),pointer=new T.Vector2();let hasPointer=false,pointerMoved=0,selected:T.Object3D|null=null,lastLabel="",highlighted:T.Object3D|null=null;const selectedPoint=new T.Vector3(),forward=new T.Vector3();
  const downloads=new Map<Location,Promise<()=>Area>>();
- function download(id:Location){let d=downloads.get(id);if(!d){d=id==="archive"?import("./living").then(m=>m.createLiving):id==="rooftop"?import("./balcony").then(m=>m.createBalcony):id==="library"?import("./study").then(m=>m.createStudy):import("./kitchen").then(m=>m.createKitchen);downloads.set(id,d);}return d;}
+ function download(id:Location){let d=downloads.get(id);if(!d){d=id==="archive"?import("./living").then(m=>m.createLiving):id==="rooftop"?import("./balcony").then(m=>m.createBalcony):id==="library"?import("./study").then(m=>m.createStudy):id==="vault"?import("./vault").then(m=>m.createVault):import("./kitchen").then(m=>m.createKitchen);downloads.set(id,d);}return d;}
  const breathe=()=>new Promise<void>(r=>setTimeout(r,0)); // let the loading screen paint between heavy steps
  /** Build a room: geometry, batching, collision and picking trees, then add it. During loading, shaders compile once everything is in. */
  async function load(id:Location,report?:(label:string)=>void){
@@ -135,7 +135,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
      const area=make();
      if(destroyed){area.dispose?.();disposeObject(area.root);return;}
      const [x,z]=rooms[id].center;area.root.position.set(x,0,z);const parts=collidersFrom(area.root);batchScenery(area.root);freezeStatic(area.root);castProxies(area.root);report?.(`Built ${name}`);await breathe();
-     building.addFurniture(parts);if(id==="rooftop")building.addFurniture(balconyGuard());buildBVH(area.root);pinLights(area.root);
+     building.addFurniture(parts);for(const m of area.movers??[])building.addMover(m.hinge,m.size,m.center);if(id==="rooftop")building.addFurniture(balconyGuard());buildBVH(area.root);pinLights(area.root);
      if(!report){await prewarm(area.root);if(destroyed)return;}
      scene.add(area.root);areas.set(id,area);pickables.push(area.root);indexShadows(area.root);bakeSoon=performance.now()+600;renderer.shadowMap.needsUpdate=true;report?.(`Collisions ready in ${name}`);
    }catch{callbacks.notice("That room could not load. Please try its door again.");}finally{pending.delete(id);}})();pending.set(id,task);return task;
@@ -205,18 +205,28 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   lightVolumes.length=0;for(const l of [light,...shadowLights]){if(l!==light&&!visibleRooms.has(locationAt(l.matrixWorld.elements[12],l.matrixWorld.elements[14])))continue;l.shadow.updateMatrices(l);lightVolumes.push(l.shadow.getFrustum());}
   let moved=false;for(const m of movers){const v=versionOf(m.o);if(m.o.visible!==m.shown||v!==m.version||!m.o.matrixWorld.equals(m.pose)){if(!moved&&(inShadowVolume(m.o,m.o.matrixWorld)||inShadowVolume(m.o,m.pose)))moved=true;m.shown=m.o.visible;m.version=v;m.pose.copy(m.o.matrixWorld);}}return moved;
  }
- function locationAt(x:number,z:number):Location{if(x<4)return"bedroom";if(z>3.25)return x<12?"library":"rooftop";return x<12?"archive":"workshop";}
+ function locationAt(x:number,z:number):Location{if(x<4)return z>3.25?"vault":"bedroom";if(z>3.25)return x<12?"library":"rooftop";return x<12?"archive":"workshop";}
+ // The secret passage: a member's sign-in (or the button inside the hidden room) parts the study shelf and unlocks
+ // the door; ten seconds later it closes and locks again, waiting while anyone stands where the shelf or door moves.
+ let secretCloseAt=0;const secretDoor=building.doors.find(d=>d.id==="library-vault")!,secretAt=secretDoor.portal.getCenter(new T.Vector3());
+ function openSecret(openDoor:boolean){secretDoor.locked=false;for(const area of areas.values())area.reveal?.();if(openDoor&&Math.abs(secretDoor.target)<.3)building.toggle(secretDoor.id);secretCloseAt=performance.now()+10000;lastRender=0;return secretAt.clone();}
+ function closeSecret(now:number){
+  const {x,z}=player.capsule.start;if(x>2.4&&x<5.4&&z>4.9&&z<8.1){secretCloseAt=now+1000;return;}
+  secretCloseAt=0;if(Math.abs(secretDoor.target)>.3)building.toggle(secretDoor.id);secretDoor.locked=true;for(const area of areas.values())area.conceal?.();
+  callbacks.action("shelf",secretAt.clone());callbacks.notice(locationAt(x,z)==="vault"?"The shelf slides shut. The brass button by the door opens it again.":"The bookshelf slides back into place.");
+ }
  async function activate(object:T.Object3D|null,point:T.Vector3){
   if(!object)return;const action=object.userData.action as Action;
+  if(action==="exit"){callbacks.action(action,point.clone());callbacks.action("shelf",openSecret(true));return;}
   if(action==="computer"||action==="laptop"){sit(action);callbacks.action(action,point.clone());return;}
   if(action.startsWith("door:")){
-    const door=building.doors.find(d=>d.id===action.slice(5));if(!door)return;
+    const door=building.doors.find(d=>d.id===action.slice(5));if(!door||door.locked)return;
     const opposite=door.id==="bedroom-archive"?"bedroom":door.id==="archive-workshop"?"archive":door.id==="archive-library"?"archive":"library";
     await load(door.destination);if(opposite!=="bedroom")await load(opposite);
     if(!areas.has(door.destination))return;building.toggle(door.id);callbacks.action(action,point.clone());return;
   }
   for(const area of areas.values()){if(isDescendant(object,area.root)){area.interact?.(action);break;}}
-  if(["projects","skills","about","experience","contact","lab","telescope","profile"].includes(action)||action.startsWith("project:")||action.startsWith("skill:"))pause();
+  if(["projects","skills","about","experience","contact","lab","telescope","profile","secret"].includes(action)||action.startsWith("project:")||action.startsWith("skill:"))pause();
   callbacks.action(action,point.clone());
  }
  function interact(){if(player.active)return activate(selected,selectedPoint);}
@@ -225,7 +235,10 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  async function enter(next:"pointer"|"drag"|"touch"="pointer"){
   if(seat)stand();
   mode=next;if(next==="pointer"){
-   try{await canvas.requestPointerLock();}catch{mode="drag";callbacks.notice("Mouse capture is unavailable here. Drag to look, or use the arrow keys.");}
+   // Right after the window regains focus (alt+tab) the browser may refuse the capture or never answer, so wait
+   // briefly at most and fall back to drag-to-look: walking always resumes. A late lock still takes over (lockChange).
+   const locked=await Promise.race([Promise.resolve(canvas.requestPointerLock()).then(()=>true,()=>false),new Promise<boolean>(r=>setTimeout(()=>r(false),800))]);
+   if(!locked&&document.pointerLockElement!==canvas){mode="drag";callbacks.notice("Mouse capture is unavailable here. Drag to look, or use the arrow keys.");}
   }
   if(destroyed)return;hasPointer=false;player.active=true;canvas.style.cursor="";canvas.focus({preventScroll:true});callbacks.active(true);
  }
@@ -272,6 +285,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   const interval=lively?0:options.motion?1000/30:250;if(now-lastRender<interval-2)return;if(!lively)lastFrameAt=0;
   const dt=Math.min((now-(last||now))/1000,.05);last=lastRender=now;const start=performance.now();if(options.motion)elapsed+=dt;renderer.info.reset();
   const wasGrounded=player.grounded,fallSpeed=player.velocity.y;
+  if(secretCloseAt&&now>secretCloseAt)closeSecret(now);
   building.update(dt,player.capsule,options.motion);player.update(dt,options.motion);
   const speed=Math.hypot(player.velocity.x,player.velocity.z);self.root.visible=player.active&&!seat&&seatBlend===0;
   if(self.root.visible){gait+=dt*speed*3.4;stride(self,gait,options.motion?Math.min(1.6,speed/2.35):0);if(!player.grounded&&options.motion){for(const k of self.knees)k.rotation.x=.75;for(const h of self.hips)h.rotation.x=-.5;}
@@ -284,9 +298,9 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   const using=seat??leaving;
   if(using&&seatBlend>0){scene.updateMatrixWorld();using.eye.getWorldPosition(seatPos);using.screen.getWorldPosition(seatLook);lookMatrix.lookAt(seatPos,seatLook,camera.up);seatQuat.setFromRotationMatrix(lookMatrix);walkPos.copy(camera.position);walkQuat.copy(camera.quaternion);const e=seatBlend*seatBlend*(3-2*seatBlend);camera.position.lerpVectors(walkPos,seatPos,e);camera.quaternion.slerpQuaternions(walkQuat,seatQuat,e);}
   camera.updateMatrixWorld();
-  // Visibility first; then only rooms you can see animate and draw.
+  // Visibility first; then only rooms you can see animate and draw (plus any mid-move, like the shelf closing behind you).
   cull();frameOptions.motion=options.motion;frameOptions.weather=options.weather;frameOptions.lamp=options.lamp;frameOptions.fan=options.fan;frameOptions.quality=low?"low":options.quality;
-  for(const [room,area] of areas){const shown=visibleRooms.has(room);area.root.visible=shown;if(shown)area.update?.(elapsed,dt,frameOptions);}
+  for(const [room,area] of areas){const shown=visibleRooms.has(room);area.root.visible=shown;if(shown||area.busy?.())area.update?.(elapsed,dt,frameOptions);}
   if(outdoors)outdoors.root.visible=outsideVisible;if(heavens)heavens.root.visible=outsideVisible;
   scene.updateMatrixWorld();follow();
   if(seat&&seatBlend>.985){const r=screenRect(seat),key=[r.x,r.y,r.w,r.h].map(Math.round).join();if(key!==lastRect){lastRect=key;callbacks.screen?.(r);}}
@@ -339,7 +353,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  player.update(.016,options.motion);
  // Loading, behind the progress bar: downloads run in parallel while rooms are built one at a time, then
  // every shader compiles once, after all rooms and lights exist, so nothing ever compiles mid-walk.
- const ROOMS:Location[]=["archive","workshop","library","rooftop"],COMPILES=ROOMS.length+4,STEPS=1+ROOMS.length*3+4+COMPILES;let stepsDone=0;
+ const ROOMS:Location[]=["archive","workshop","library","rooftop","vault"],COMPILES=ROOMS.length+4,STEPS=1+ROOMS.length*3+4+COMPILES;let stepsDone=0;
  const step=(label:string)=>{stepsDone++;callbacks.progress?.(Math.min(.99,stepsDone/STEPS),label);};
  void (async()=>{
   callbacks.progress?.(0,"Downloading the flat");ROOMS.forEach(id=>void download(id));const outdoorsModule=import("./outdoors"),skyModule=import("./sky");
@@ -367,9 +381,11 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   if(destroyed)return;renderer.shadowMap.needsUpdate=true;bakeSoon=performance.now()+300;callbacks.progress?.(1,"Ready");callbacks.ready();renderer.setAnimationLoop(frame);
  })();
  return {enter,pause,interact,sit,stand,setStick(x:number,y:number){player.stick.set(x,y);},
+ /** A member signed in: the bookshelf opens and the hidden door can be used. Returns where it happens, for sound. */
+ unlock(){return openSecret(false);},
  // Development aid for visual QA: jump to a spot, loading whatever rooms are near it.
  debugScene(){return scene;},debugRenderer(){return renderer;},benchmark(on:boolean){if(on){benchOn=true;Object.assign(bench,{frames:0,cpu:0,full:0,calls:0,tris:0});return null;}benchOn=false;const n=Math.max(1,bench.frames);return {frames:bench.frames,cpuMs:+(bench.cpu/n).toFixed(2),frameMs:+(bench.full/n).toFixed(2),calls:Math.round(bench.calls/n),tris:Math.round(bench.tris/n)};},
- async teleport(x:number,z:number,yaw:number,pitch=-.05){for(const id of Object.keys(rooms) as Location[])if(Math.hypot(rooms[id].center[0]-x,rooms[id].center[1]-z)<9)await load(id);for(const door of building.doors)door.target=Math.PI*.53*(door.base<0?1:-1);player.place(x,z,yaw,pitch);lastRender=0;},setOptions(next:WorldOptions){options={...next};tracing=false;baseFov=(options.fov??68)+(camera.aspect<.8?10:0);if(post){post.ao.enabled=options.ao!==false&&!aoOff;post.bloom.enabled=options.bloom!==false;post.grain(options.grain!==false);}if(outdoors)outdoors.setLife(options.life!==false);if(!postWanted()&&post){post.dispose();post=null;}renderer.setPixelRatio(ratio());sizePost();lastRender=0;},
+ async teleport(x:number,z:number,yaw:number,pitch=-.05){for(const id of Object.keys(rooms) as Location[])if(Math.hypot(rooms[id].center[0]-x,rooms[id].center[1]-z)<9)await load(id);for(const door of building.doors)if(!door.locked)door.target=Math.PI*.53*door.swing;player.place(x,z,yaw,pitch);lastRender=0;},setOptions(next:WorldOptions){options={...next};tracing=false;baseFov=(options.fov??68)+(camera.aspect<.8?10:0);if(post){post.ao.enabled=options.ao!==false&&!aoOff;post.bloom.enabled=options.bloom!==false;post.grain(options.grain!==false);}if(outdoors)outdoors.setLife(options.life!==false);if(!postWanted()&&post){post.dispose();post=null;}renderer.setPixelRatio(ratio());sizePost();lastRender=0;},
  dispose(){destroyed=true;pause();renderer.setAnimationLoop(null);resize.disconnect();document.removeEventListener("pointerlockchange",lockChange);document.removeEventListener("keydown",keyDown);document.removeEventListener("keyup",keyUp);document.removeEventListener("visibilitychange",visibility);window.removeEventListener("blur",blurred);canvas.removeEventListener("pointerdown",down);canvas.removeEventListener("pointermove",move);canvas.removeEventListener("pointerup",up);canvas.removeEventListener("pointercancel",up);canvas.removeEventListener("pointerleave",leave);canvas.removeEventListener("click",click);canvas.removeEventListener("webglcontextlost",lost);canvas.removeEventListener("contextmenu",context);document.removeEventListener("mouseup",mouseUp);for(const area of areas.values())area.dispose?.();post?.dispose();rt?.dispose();scene.environment?.dispose();disposeObject(scene);light.shadow.dispose();renderer.dispose();renderer.forceContextLoss();canvas.remove();}
  };
 }

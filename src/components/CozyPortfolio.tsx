@@ -11,13 +11,14 @@ import {useInterfaceSounds} from "./useInterfaceSounds";
 import {liveConditions,timeOfDay,type Live} from "./world/live";
 const Telescope=dynamic(()=>import("./Telescope"),{ssr:false});
 const Computer=dynamic(()=>import("./Computer"),{ssr:false});
+const SecretDoor=dynamic(()=>import("./SecretDoor"),{ssr:false});
 import {projects,experience,skills,contact,profile} from "./world/content";
 import type {Action,Location,Weather,WorldOptions} from "./world/objects";
 import type {WorldEngine} from "./world/engine";
 import {RoomAudio} from "./world/audio";
 import styles from "./CozyPortfolio.module.css";
 type Panel="projects"|"skills"|"about"|"experience"|"contact"|"lab"|"credits"|"profile"|`project:${string}`|`skill:${string}`;
-const roomNames:Record<Location,string>={bedroom:"The bedroom",archive:"The living room",workshop:"The kitchen",library:"The study",rooftop:"The balcony"};
+const roomNames:Record<Location,string>={bedroom:"The bedroom",archive:"The living room",workshop:"The kitchen",library:"The study",rooftop:"The balcony",vault:"The hidden room"};
 const deepLinks:Record<string,Panel>={"#work":"projects","#projects":"projects","#hello":"contact","#contact":"contact","#person":"about","#about":"about","#experience":"experience","#skills":"skills"};
 const coarse=()=>matchMedia("(pointer: coarse)").matches,noSubscribe=()=>()=>{};
 function Words({text}:{text:string}){return <>{text.split(" ").map((word,i)=><Fragment key={i}>{i>0&&" "}<span className={styles.word} data-word><span>{word}</span></span></Fragment>)}</>;}
@@ -25,7 +26,7 @@ export default function CozyPortfolio(){
  const [ready,setReady]=useState(false),[failed,setFailed]=useState(false),[active,setActive]=useState(false),[entered,setEntered]=useState(false),[classic,setClassic]=useState(false),[paused,setPaused]=useState(false),[progress,setProgress]=useState({value:0,label:"Opening the door"});
  const lastMode=useRef<"pointer"|"drag"|"touch">("pointer");
  const touch=useSyncExternalStore(noSubscribe,coarse,()=>false);
- const [panel,setPanel]=useState<Panel|null>(null),[location,setLocation]=useState<Location>("bedroom"),[target,setTarget]=useState(""),[toast,setToast]=useState(""),[sound,setSound]=useState(false),[motion,setMotion]=useState(true),[weather,setWeather]=useState<Weather>("rain"),[lamp,setLamp]=useState(true),[quality,setQuality]=useState<"auto"|"low">("auto"),[stick,setStick]=useState({x:0,y:0}),[scope,setScope]=useState(false),[weatherMode,setWeatherMode]=useState<"live"|"manual">("live"),[live,setLive]=useState<Live|null>(null),[precise,setPrecise]=useState<{lat:number;lon:number}|null>(null),[spotify,setSpotify]=useState(false),[rtx,setRtx]=useState(false),[controls,setControls]=useState(false),[prefs,setPrefs]=useState<Prefs>(defaultPrefs),[samples,setSamples]=useState(0),[sitting,setSitting]=useState(false),[seat,setSeat]=useState<{id:"computer"|"laptop";x:number;y:number;w:number;h:number}|null>(null);
+ const [panel,setPanel]=useState<Panel|null>(null),[location,setLocation]=useState<Location>("bedroom"),[target,setTarget]=useState(""),[toast,setToast]=useState(""),[sound,setSound]=useState(false),[motion,setMotion]=useState(true),[weather,setWeather]=useState<Weather>("rain"),[lamp,setLamp]=useState(true),[quality,setQuality]=useState<"auto"|"low">("auto"),[stick,setStick]=useState({x:0,y:0}),[scope,setScope]=useState(false),[weatherMode,setWeatherMode]=useState<"live"|"manual">("live"),[live,setLive]=useState<Live|null>(null),[precise,setPrecise]=useState<{lat:number;lon:number}|null>(null),[spotify,setSpotify]=useState(false),[rtx,setRtx]=useState(false),[controls,setControls]=useState(false),[prefs,setPrefs]=useState<Prefs>(defaultPrefs),[samples,setSamples]=useState(0),[sitting,setSitting]=useState(false),[seat,setSeat]=useState<{id:"computer"|"laptop";x:number;y:number;w:number;h:number}|null>(null),[secret,setSecret]=useState(false),[member,setMember]=useState<string|null>(null);
  const container=useRef<HTMLDivElement>(null),engine=useRef<WorldEngine|null>(null),audio=useRef<RoomAudio|null>(null),dialog=useRef<HTMLDialogElement>(null),timer=useRef<ReturnType<typeof setTimeout>|null>(null),actionRef=useRef<(action:Action)=>void>(()=>{}),options=useRef<WorldOptions>({motion:true,weather:"rain",lamp:true,quality:"auto",rtx:false});
  const paper=useRef<HTMLDivElement>(null),entry=useRef<HTMLDivElement>(null),chip=useRef<HTMLDivElement>(null),chipMove=useRef<(x:number,y:number)=>void>(()=>{}),closing=useRef(false);
  const visible=!classic&&!failed;
@@ -53,6 +54,9 @@ export default function CozyPortfolio(){
   if(action==="chair")return;
   if(action==="computer"||action==="laptop"){setSitting(true);return;}
   if(action==="telescope"){engine.current?.pause();setScope(true);audio.current?.ui("lens");return;}
+  // A member who signed in this visit is let straight through; it resets on reload.
+  if(action==="secret"){if(member)letIn(`Welcome back, ${member}.`);else setSecret(true);return;}
+  if(action==="exit"||action==="shelf")return; // the engine moves the shelf; the sound already played
   if(action==="cat"){announce("Mishti stretches, purrs once, and goes straight back to sleep.");return;}
   if(action==="radio"){if(!sound)announce("Turn sound on to hear the radio — it plays from the counter, so walk closer.");else announce("The radio crackles on. Walk away and it fades.");return;}
   if(action==="record"){setSpotify(true);return;}
@@ -102,8 +106,17 @@ export default function CozyPortfolio(){
    }
   }else if(d.open)d.close();
  },[panel,motion]);
- const idle=visible&&ready&&!active&&!panel&&!scope&&!sitting&&(!entered||paused);
- const resting=visible&&ready&&entered&&!paused&&!active&&!panel&&!scope&&!sitting&&!controls&&!spotify;
+ const idle=visible&&ready&&!active&&!panel&&!scope&&!sitting&&!secret&&(!entered||paused);
+ const resting=visible&&ready&&entered&&!paused&&!active&&!panel&&!scope&&!sitting&&!secret&&!controls&&!spotify;
+ // Back from another window (alt+tab) or a pause: a movement key, or a click on empty room, walks on again.
+ const resumable=visible&&ready&&entered&&!active&&!panel&&!scope&&!sitting&&!secret&&!controls&&!spotify;
+ const walkOn=useRef(()=>{});useEffect(()=>{walkOn.current=()=>void enter(lastMode.current==="drag");});
+ useEffect(()=>{
+  if(!resumable||touch)return;
+  function key(e:KeyboardEvent){const t=e.target as HTMLElement|null;if(t?.closest?.("input,textarea,select,[contenteditable]")||(e.code==="Space"&&t?.closest?.("button")))return;
+   if(["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"].includes(e.code)){e.preventDefault();walkOn.current();}}
+  document.addEventListener("keydown",key);return()=>document.removeEventListener("keydown",key);
+ },[resumable,touch]);
  // Entry choreography: words rise from their baseline, then the supporting lines follow.
  useEffect(()=>{
   const el=entry.current;if(!el||!idle||!motion)return;
@@ -114,12 +127,13 @@ export default function CozyPortfolio(){
  },[idle,entered,motion]);
  useEffect(()=>{const el=chip.current;if(!el)return;const x=gsap.quickTo(el,"x",{duration:.38,ease:"power3.out"}),y=gsap.quickTo(el,"y",{duration:.38,ease:"power3.out"});chipMove.current=(cx,cy)=>{x(cx);y(cy);};},[]);
  async function enter(drag=false){setEntered(true);setPaused(false);audio.current?.ui("enter");lastMode.current=touch?"touch":drag?"drag":"pointer";await engine.current?.enter(lastMode.current);}
+ function letIn(greeting:string){const at=engine.current?.unlock();if(at)audio.current?.tick(at,"shelf");announce(`${greeting} The shelf slides open.`);resume();}
  function reading(){engine.current?.pause();setClassic(true);}
  function world(){setFailed(false);setClassic(false);setReady(false);setActive(false);setEntered(false);}
  function joystick(e:ReactPointerEvent<HTMLDivElement>){const rect=e.currentTarget.getBoundingClientRect();const dx=(e.clientX-rect.left-rect.width/2)/42,dy=(e.clientY-rect.top-rect.height/2)/42,length=Math.max(1,Math.hypot(dx,dy));engine.current?.setStick(dx/length,dy/length);setStick({x:dx/length*33,y:dy/length*33});}
  return <div className={styles.world} data-mode={visible?"world":"classic"} data-motion={motion?"on":"off"} data-active={active} onPointerMove={e=>{if(e.pointerType==="mouse")chipMove.current(e.clientX,e.clientY);}}>
   <a href="#portfolio-content" className={styles.skip} onClick={reading}>Skip to accessible portfolio</a>
-  {visible&&<div className={styles.scene} ref={container}/>}
+  {visible&&<div className={styles.scene} ref={container} onClick={()=>{if(resumable&&!touch&&!target)walkOn.current();}}/>}
   {visible&&<div className={styles.scrim} data-hidden={active||Boolean(panel)} aria-hidden="true"/>}
   <header className={styles.header}><Link href="/" className={styles.signature}>DY<span>/</span></Link><div className={styles.location}><span>DEEPANSHU’S WORLD</span><strong key={location}>{roomNames[location]}</strong></div><nav aria-label="Portfolio shortcuts"><button onClick={()=>open("projects")}>Portfolio index <span aria-hidden="true">↗</span></button><button onClick={()=>open("contact")}>Contact</button><button onClick={()=>{engine.current?.pause(true);}} className={styles.pause} disabled={!active}>Pause</button></nav></header>
   {visible&&<main className={styles.exploration}>
@@ -139,6 +153,7 @@ export default function CozyPortfolio(){
   <dialog className={styles.dialog} ref={dialog} onCancel={e=>{e.preventDefault();close();}} onClose={()=>setPanel(null)} onClick={e=>{if(e.target===e.currentTarget)close();}} aria-labelledby="panel-title"><div className={styles.paper} ref={paper}><div className={styles.paperTop}><span>D/Y — WORKSPACE / {panel?.startsWith("project")?"PROJECT TERMINAL":"FIELD NOTES"}</span><button aria-label="Close information panel" onClick={close}>×</button></div>{panel&&<Content key={panel} section={panel} onSelect={setPanel} motion={motion}/>}<div className={styles.paperBottom}><button onClick={close}>Back to the world <span aria-hidden="true">↗</span></button></div></div></dialog>
   <ControlCentre open={controls} onClose={()=>setControls(false)} prefs={prefs} setPref={setPref} weather={weather} setWeather={chooseWeather} weatherMode={weatherMode} live={live} usePrecise={usePreciseLocation} precise={Boolean(precise)} lamp={lamp} setLamp={setLamp} motion={motion} setMotion={setMotion} quality={quality} setQuality={setQuality} rtx={rtx} setRtx={setRtx} sound={sound} toggleSound={()=>void toggleSound()} go={go} touch={touch}/>
   {spotify&&<MusicPlayer getAudio={getAudio} onClose={()=>setSpotify(false)}/>}
+  {secret&&<SecretDoor motion={motion} onClose={()=>{setSecret(false);resume();}} onUnlock={name=>{setSecret(false);setMember(name);letIn(`Welcome, ${name}.`);}}/>}
   {scope&&<Telescope motion={motion} onClose={()=>{setScope(false);resume();}}/>}
   {seat&&<Computer seat={seat} motion={motion} onExit={()=>{engine.current?.stand();resume();}}/>}
   <noscript><style>{`.${styles.classic}{display:block!important}.${styles.exploration},.${styles.utilities},.${styles.scrim}{display:none!important}`}</style></noscript>

@@ -11,6 +11,8 @@ export class Walker {
  private yawGoal=this.yaw;private pitchGoal=this.pitch;private direction=new T.Vector3();private translation=new T.Vector3();
  constructor(private camera:T.PerspectiveCamera,private building:Building){}
  look(dx:number,dy:number){this.yawGoal-=dx*.0022;this.pitchGoal=T.MathUtils.clamp(this.pitchGoal-dy*.0022,-1.46,1.46);}
+ /** Out of a door or swinging shelf, keeping only the velocity along it. */
+ private push(part:Building["movers"][number]){const hit=this.building.doorCollision(part,this.capsule);if(hit){this.capsule.translate(this.translation.copy(hit.normal).multiplyScalar(hit.depth+.0001));const into=this.velocity.dot(hit.normal);if(into<0)this.velocity.addScaledVector(hit.normal,-into);}}
  clear(){this.keys.clear();this.stick.set(0,0);this.velocity.set(0,0,0);}
  place(x:number,z:number,yaw:number,pitch=-.05){const dy=this.capsule.end.y-this.capsule.start.y;this.capsule.start.set(x,.3,z);this.capsule.end.set(x,.3+dy,z);this.yaw=this.yawGoal=yaw;this.pitch=this.pitchGoal=pitch;this.velocity.set(0,0,0);this.intro=0;}
  update(dt:number,motion:boolean){
@@ -25,7 +27,7 @@ export class Walker {
      if(this.active&&this.keys.has("Space")&&this.grounded){this.velocity.y=4.2;this.grounded=false;this.keys.delete("Space");}
      this.velocity.y-=14*step;this.capsule.translate(this.translation.copy(this.velocity).multiplyScalar(step));this.grounded=false;
      for(let j=0;j<4;j++){let hit=this.building.tree.capsuleIntersect(this.capsule);for(const extra of this.building.furniture){if(hit)break;hit=extra.capsuleIntersect(this.capsule);}if(!hit)break;this.capsule.translate(this.translation.copy(hit.normal).multiplyScalar(hit.depth+.00001));if(hit.normal.y>.5)this.grounded=true;const into=this.velocity.dot(hit.normal);if(into<0)this.velocity.addScaledVector(hit.normal,-into);}
-     for(const door of this.building.doors){const hit=this.building.doorCollision(door,this.capsule);if(hit){this.capsule.translate(this.translation.copy(hit.normal).multiplyScalar(hit.depth+.0001));const into=this.velocity.dot(hit.normal);if(into<0)this.velocity.addScaledVector(hit.normal,-into);}}
+     for(const door of this.building.doors)this.push(door);for(const mover of this.building.movers)this.push(mover);
    }
    const calm=this.active?0:1;this.driftNow.x=motion?T.MathUtils.damp(this.driftNow.x,this.drift.x*calm,3.2,dt):0;this.driftNow.y=motion?T.MathUtils.damp(this.driftNow.y,this.drift.y*calm,3.2,dt):0;
    this.intro=motion?T.MathUtils.damp(this.intro,0,1.15,dt):0;if(this.intro<.002)this.intro=0;

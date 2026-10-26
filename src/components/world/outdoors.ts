@@ -226,7 +226,7 @@ export function createOutdoors() {
   const drops = 2200, rainPositions = new Float32Array(drops * 6), speeds = new Float32Array(drops), rainGeometry = new T.BufferGeometry(); rainGeometry.setAttribute("position", new T.BufferAttribute(rainPositions, 3));
   for (let i = 0; i < drops; i++) { speeds[i] = 14 + (i % 7); const x = (Math.random() - .5) * 44, y = Math.random() * 30 - 14, z = (Math.random() - .5) * 44; rainPositions.set([x, y, z, x + .03, y - .4, z + .02], i * 6); }
   const rain = new T.LineSegments(rainGeometry, new T.LineBasicMaterial({ color: "#c9d8dc", transparent: true, opacity: .35, depthWrite: false })); rain.frustumCulled = false; dynamic.add(rain);
-  const indoors = (x: number, y: number, z: number) => y > -.3 && y < 4.6 && ((x > -4.2 && x < 20.2 && z > -3.4 && z < 3.35) || (x > 3.85 && x < 12.15 && z > 3.2 && z < 9.9));
+  const indoors = (x: number, y: number, z: number) => y > -.3 && y < 4.6 && ((x > -4.2 && x < 20.2 && z > -3.4 && z < 3.35) || (x > -.15 && x < 12.15 && z > 3.2 && z < 9.9));
   batchScenery(root);
   const mood = { rain: .55, day: 0, sunset: .45, night: 1.5 };
   let lit = 0;

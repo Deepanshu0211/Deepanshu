@@ -13,7 +13,7 @@ type Surface = "wood" | "tile";
 type Room = Location | "outside";
 type Spot = { at: Point; room: Room; panner: PannerNode; filter: BiquadFilterNode; level: GainNode };
 type Reach = { trans: number; cutoff: number; via?: Point };
-const surfaceOf: Record<Location, Surface> = { bedroom: "wood", archive: "wood", library: "wood", workshop: "tile", rooftop: "tile" };
+const surfaceOf: Record<Location, Surface> = { bedroom: "wood", archive: "wood", library: "wood", workshop: "tile", rooftop: "tile", vault: "wood" };
 /** Reverb by room: decay (s), wet level, brightness (0 dark … 1 bright), and early reflections (ms) from the nearest walls. */
 const acoustics: Record<Location, { decay: number; wet: number; bright: number; early: number[] }> = {
   bedroom: { decay: .8, wet: .16, bright: .3, early: [9, 14, 21] }, // bed, rug and curtains soak it up
@@ -21,10 +21,11 @@ const acoustics: Record<Location, { decay: number; wet: number; bright: number; 
   library: { decay: 1, wet: .17, bright: .38, early: [11, 17, 24] }, // full shelves scatter and absorb
   workshop: { decay: 1.7, wet: .3, bright: .85, early: [8, 13, 18, 26] }, // tile and steel ring
   rooftop: { decay: .35, wet: .05, bright: .6, early: [6] }, // open air: one wall, then sky
+  vault: { decay: .6, wet: .12, bright: .25, early: [7, 11, 16] }, // small, closed and full of books
 };
 function roomOf(p: Point): Room {
   if (p.y < -1 || p.x < -4.2 || p.x > 20.2 || p.z < -3.6 || p.z > 10) return "outside";
-  if (p.x < 4) return "bedroom"; if (p.z > 3.25) return p.x < 12 ? "library" : "rooftop"; return p.x < 12 ? "archive" : "workshop";
+  if (p.x < 4) return p.z > 3.25 ? "vault" : "bedroom"; if (p.z > 3.25) return p.x < 12 ? "library" : "rooftop"; return p.x < 12 ? "archive" : "workshop";
 }
 
 export class RoomAudio {
@@ -98,6 +99,8 @@ export class RoomAudio {
     switch (kind) {
       case "lamp": return this.click(at, 2400, .05);
       case "drawer": return this.slide(at, .5);
+      case "secret": case "exit": return this.click(at, 1800, .05);
+      case "shelf": this.creak(at, .05); return this.slide(at, 1.6, 260);
       case "keyboard": for (let i = 0; i < 14; i++) this.later(i * 70 + Math.random() * 40, () => this.click(at, 3200 + Math.random() * 900, .025)); return;
       case "kettle": for (let i = 0; i < 3; i++) this.later(i * 140, () => this.click(at, 3600, .05)); this.later(450, () => this.slide(at, .6, 500)); return this.whistle(at);
       case "cat": return this.purr(at);

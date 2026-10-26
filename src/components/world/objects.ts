@@ -3,9 +3,9 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { surface, leafTexture, mottle, projectSurfaces, windify } from "./materials";
 
-export type Action = "projects" | "skills" | "about" | "experience" | "contact" | "lamp" | "weather" | "sound" | "keyboard" | "drawer" | "pet" | "duck" | "lab" | "chair" | "cat" | "telescope" | "computer" | "laptop" | "profile" | "record" | "radio" | "fridge" | "kettle" | "globe" | "swing" | `door:${string}` | `project:${string}` | `skill:${string}`;
+export type Action = "projects" | "skills" | "about" | "experience" | "contact" | "lamp" | "weather" | "sound" | "keyboard" | "drawer" | "pet" | "duck" | "lab" | "chair" | "cat" | "telescope" | "computer" | "laptop" | "profile" | "record" | "radio" | "fridge" | "kettle" | "globe" | "swing" | "secret" | "exit" | "shelf" | `door:${string}` | `project:${string}` | `skill:${string}`;
 export type Weather = "rain" | "day" | "sunset" | "night";
-export type Location = "bedroom" | "archive" | "rooftop" | "workshop" | "library";
+export type Location = "bedroom" | "archive" | "rooftop" | "workshop" | "library" | "vault";
 export interface WorldOptions { motion: boolean; weather: Weather; lamp: boolean; quality: "auto" | "low"; rtx?: boolean; fov?: number; sensitivity?: number; lights?: number; fan?: number; life?: boolean; ao?: boolean; bloom?: boolean; grain?: boolean; volume?: number; }
 export interface Area {
   root: T.Group;
@@ -19,6 +19,14 @@ export interface Area {
   seats?: { id: "computer" | "laptop"; eye: T.Object3D; screen: T.Mesh }[];
   /** Capture reflections (mirrors) from the finished scene; called after loading and when the light changes. */
   bake?: (renderer: T.WebGLRenderer, scene: T.Scene) => void;
+  /** Parts that swing but stay solid (the study's bookshelf doors): a pivot and its collision box in the pivot's space. */
+  movers?: { hinge: T.Object3D; size: [number, number, number]; center: [number, number, number] }[];
+  /** A member signed in: open what was hidden. */
+  reveal?: () => void;
+  /** Hide it again (the shelf closes on its timer). */
+  conceal?: () => void;
+  /** True while something must keep moving even out of sight (the shelf sliding), so it is updated anyway. */
+  busy?: () => boolean;
 }
 export const colors = { wood: "#7b4a2b", edge: "#3e2618", wall: "#e8dfcd", cream: "#e3d6bc", sage: "#2f4f43", rust: "#b4532a", dark: "#221c18", amber: "#ffcc83", teal: "#2d3a6b" };
 export function material(color: string, roughness?: number) { return surface(color, roughness); }
