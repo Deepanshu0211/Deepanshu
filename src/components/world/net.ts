@@ -27,7 +27,13 @@ export interface LobbyEvents {
   voice: (id: string, stream: MediaStream) => void;
   door: (id: string, open: boolean) => void;
 }
-const ICE = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:global.stun.twilio.com:3478" }] };
+// Across different networks a direct connection often fails, so a TURN relay is added when the site has one
+// (see app/api/turn). Fetched fresh for each join: relay credentials are short-lived.
+const STUN_ONLY: RTCConfiguration = { iceServers: [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }] };
+function iceConfig(): Promise<{ relay: boolean; config: RTCConfiguration }> {
+  return fetch("/api/turn", { cache: "no-store" }).then(r => r.json()).then((d: { relay: boolean; iceServers: RTCIceServer[] }) => ({ relay: Boolean(d.relay), config: { iceServers: d.iceServers } })).catch(() => ({ relay: false, config: STUN_ONLY }));
+}
+const NO_RELAY = "Couldn’t connect to the room. Players on different networks (say Wi-Fi and mobile data) need a relay server, which this site hasn’t set up yet. On the same Wi-Fi it works.";
 
 /** Room codes: letters, digits and dashes, 3 to 24 long, case-insensitive. */
 export function cleanCode(code: string) { return code.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 24); }
@@ -40,6 +46,7 @@ async function meetingPoint(code: string) {
 export class Lobby {
   private Peer: typeof PeerType | null = null; private me: PeerType | null = null; private keeper: PeerType | null = null; private point = "";
   private links = new Map<string, { data: DataConnection; call?: MediaConnection; player: Player }>();
+  private config: RTCConfiguration = STUN_ONLY; private relay = false;
   private mic: MediaStream | null = null; private self = { name: "", color: "", mic: false }; private left = false;
   constructor(private events: LobbyEvents) {}
   get id() { return this.me?.id ?? ""; }
@@ -53,8 +60,8 @@ export class Lobby {
       try { this.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); this.self.mic = true; }
       catch { this.events.status("connecting", "No microphone, so you can listen but not talk. Finding your room…"); }
     }
-    const { Peer } = await import("peerjs"); this.Peer = Peer; this.point = await meetingPoint(cleanCode(code));
-    const me = this.me = new Peer({ config: ICE, debug: 0 });
+    const [{ Peer }, ice] = await Promise.all([import("peerjs"), iceConfig()]); this.Peer = Peer; this.config = ice.config; this.relay = ice.relay; this.point = await meetingPoint(cleanCode(code));
+    const me = this.me = new Peer({ config: this.config, debug: 0 });
     me.on("connection", data => this.accept(data));
     me.on("call", call => this.answer(call));
     me.on("error", error => { if (!this.left && ["network", "server-error", "socket-error", "socket-closed", "browser-incompatible"].includes(error.type)) this.events.status("error", "Couldn’t reach the matchmaking server. Check your connection and try again."); });
@@ -69,14 +76,14 @@ export class Lobby {
   private claim() {
     return new Promise<void>(resolve => {
       if (!this.Peer || this.left) { resolve(); return; }
-      const keeper = new this.Peer(this.point, { config: ICE, debug: 0 }); let settled = false;
+      const keeper = new this.Peer(this.point, { config: this.config, debug: 0 }); let settled = false;
       const done = (ok: boolean) => { if (settled) return; settled = true; if (ok) { this.keeper = keeper; keeper.on("connection", c => c.on("open", () => { c.send({ t: "roster", ids: [this.id, ...this.links.keys()] } satisfies Message); setTimeout(() => c.close(), 4000); })); } else keeper.destroy(); resolve(); };
       keeper.once("open", () => done(true)); keeper.once("error", () => done(false)); setTimeout(() => done(false), 8000);
     });
   }
   private askKeeper() {
     const ask = this.me!.connect(this.point, { reliable: true });
-    const timer = setTimeout(() => { ask.close(); this.events.status("error", "The room didn’t answer. Try the code again."); }, 12000);
+    const timer = setTimeout(() => { ask.close(); this.events.status("error", this.relay ? "The room didn’t answer. Try the code again in a moment." : NO_RELAY); }, 15000);
     ask.on("data", raw => { const m = raw as Message; if (m.t !== "roster") return; clearTimeout(timer); ask.close();
       const others = m.ids.filter(id => id !== this.id).slice(0, MAX_PLAYERS - 1);
       for (const id of others) this.dial(id);
@@ -88,7 +95,9 @@ export class Lobby {
     if (this.links.size >= MAX_PLAYERS - 1) { data.on("open", () => data.close()); return; }
     const player: Player = { id: data.peer, name: "Friend", color: "#e0a526", talking: false, mic: false, state: null };
     this.links.set(data.peer, { data, player });
-    data.on("open", () => { data.send({ t: "hello", ...this.self } satisfies Message); });
+    // A friend whose connection never opens (blocked network, no relay) is dropped rather than left as a ghost.
+    const giveUp = setTimeout(() => { if (data.open) return; this.drop(data.peer); if (!this.left && !this.relay) this.events.status("in-room", "A friend couldn’t connect: you’re likely on different networks, and this site has no relay server yet."); }, 15000);
+    data.on("open", () => { clearTimeout(giveUp); data.send({ t: "hello", ...this.self } satisfies Message); });
     data.on("data", raw => this.receive(data.peer, raw as Message));
     const gone = () => this.drop(data.peer); data.on("close", gone); data.on("error", gone);
   }

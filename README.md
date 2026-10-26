@@ -34,3 +34,12 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Multiplayer across networks (TURN relay)
+
+Friends join the world with a room code; movement and voice go peer to peer (WebRTC via PeerJS). On one network that just works. Across networks (Wi-Fi and mobile data, carrier NAT, office firewalls) browsers often can't reach each other directly and need a TURN relay. `src/app/api/turn/route.ts` fetches short-lived relay credentials server-side when one of these is set in Vercel (Project → Settings → Environment Variables), then redeploy:
+
+- Cloudflare Realtime TURN: `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN` (Cloudflare dashboard → Realtime → TURN Server → create a key)
+- or Metered: `METERED_DOMAIN` (e.g. `yourapp.metered.live`) and `METERED_API_KEY`
+
+Without either, only public STUN is used.
