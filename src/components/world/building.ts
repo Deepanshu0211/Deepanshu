@@ -9,7 +9,7 @@ import { surface, tiles, projected, metal, herringbone, weave } from "./material
 export const rooms: Record<Location,{center:[number,number];label:string}> = {
  bedroom:{center:[0,0],label:"The bedroom"}, archive:{center:[8,0],label:"The living room"},
  workshop:{center:[16,0],label:"The kitchen"},library:{center:[8,6.5],label:"The study"},rooftop:{center:[16,6.5],label:"The balcony"},
- vault:{center:[2,6.5],label:"The hidden room"}
+ vault:{center:[0,6.5],label:"The hidden room"}
 };
 export interface Door { id:string; hinge:T.Group; leaf:T.Mesh; angle:number; target:number; base:number; destination:Location; tree:Octree; /** The opening, for portal culling. */ portal:T.Box3; rooms:[Location,Location]; /** Which way it opens (+1 or -1). */ swing:number; /** Members only: no one can open it until it is unlocked. */ locked:boolean; }
 type Opening=[from:number,to:number,bottom:number,top:number];
@@ -24,7 +24,7 @@ export function createBuilding(){
   bedroom:surface("#5b6370",.9,"plaster"),archive:surface("#1f4a5b",.9,"plaster"),workshop:surface("#a9bfb3",.9,"plaster"),
   library:projected(new T.MeshStandardMaterial({color:"#1d6a6c",bumpMap:weave(),bumpScale:2.2,roughness:.92}),.35), // grasscloth
   rooftop:surface(c.wall),vault:surface("#22473a",.9,"plaster"),outside:surface(c.wall)};
- const roomAt=(x:number,z:number):Location|"outside"=>x<-4||x>20||z<-3.25||z>9.75?"outside":x<4?(z<3.25?"bedroom":x<0?"outside":"vault"):z>3.25?(x<12?"library":"rooftop"):x<12?"archive":"workshop";
+ const roomAt=(x:number,z:number):Location|"outside"=>x<-4||x>20||z<-3.25||z>9.75?"outside":x<4?(z<3.25?"bedroom":"vault"):z>3.25?(x<12?"library":"rooftop"):x<12?"archive":"workshop";
  function skin(size:number[],pos:number[]){
   const across=size[0]<=.2?0:size[2]<=.2?2:-1;if(across<0){box(root,size,pos,c.wall,0);return;}
   for(const side of [-1,1]){const s=[...size],p=[...pos],probe=[...pos];s[across]/=2;p[across]+=side*size[across]/4;probe[across]+=side*.4;box(root,s,p,paint[roomAt(probe[0],probe[2])],0);}
@@ -77,7 +77,7 @@ export function createBuilding(){
  // A framed photo of the members on its study face (the hinge's -z side), captioned underneath.
  {const art=group(doors[doors.length-1].hinge,[.75,0,-.045]);art.rotation.y=Math.PI;const photo=new T.TextureLoader().load("/images/global-friends.webp");photo.colorSpace=T.SRGBColorSpace;
   box(art,[.86,.86,.02],[0,1.6,0],frameWood,.006);const picture=new T.Mesh(new T.PlaneGeometry(.78,.78),new T.MeshStandardMaterial({map:photo,roughness:.6}));picture.position.set(0,1.6,.011);art.add(picture);
-  sign(art,"Global friends",[0,1.07,.003],.7,.13,"#efe7d4",c.edge);}wall([.18,4.4,6.5],[0,2.2,6.5]);wall([4,4.4,.18],[2,2.2,9.75]);
+  sign(art,"Global friends",[0,1.07,.003],.7,.13,"#efe7d4",c.edge);}wall([.18,4.4,6.5],[-4,2.2,6.5]);wall([8,4.4,.18],[0,2.2,9.75]); // the hidden room runs the width of the bedroom
  windowWall("z",9.75,4,12,[[6.6,9.4,.95,3.0]]);
  doorway("x",12,3.25,9.75,7.2,"library-rooftop","rooftop");
  const floors:Record<Location,T.Material>={
@@ -93,7 +93,7 @@ export function createBuilding(){
  const lamps:Record<Exclude<Location,"vault">,[number,number,number]>={bedroom:[1.5,4.05,.4],archive:[6.6,4.05,1.2],workshop:[16,4.05,-1.3],library:[8,4.05,5.6],rooftop:[16,2.6,3.5]};
  const opal=new T.MeshBasicMaterial({color:new T.Color("#fff1d8").multiplyScalar(1.7)});
  for(const [name,room] of Object.entries(rooms) as [Location,typeof rooms[Location]][]){
-   const [x,z]=room.center,w=name==="vault"?4:8;
+   const [x,z]=room.center,w=8;
    if(name!=="bedroom")box(root,[w-.05,.045,6.45],[x,0,z],floors[name],0);
    // The hidden room has no ceiling fitting: its own lamps stay on (vault.ts).
    if(name==="vault"){wall([w,.16,6.5],[x,4.44,z],"#f2efe8");continue;}

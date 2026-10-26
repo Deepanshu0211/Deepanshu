@@ -23,6 +23,26 @@ function weigh(x: number, y: number): [number[], number[]] {
   const head = ramp(NECK - .05, NECK + .03, y); return [[PELVIS, HEAD, 0, 0], [1 - head, head, 0, 0]];
 }
 
+/** Clothes and hair colours. Each player gets a fresh random set when they join a room, so friends look different. */
+export interface Outfit { top: string; bottom: string; shoes: string; hair: string }
+const WARDROBE: Record<keyof Outfit, string[]> = {
+  top: ["#2f4f43", "#b4532a", "#2d3a6b", "#c9a43a", "#7a4b3a", "#8a3b6b", "#1f6b4a", "#b8232a", "#d9786a", "#4a5a7a", "#e2d6bd", "#1d6a6c"],
+  bottom: ["#1f1f24", "#2d3a6b", "#3b3f3c", "#6b5a44", "#c8bfae", "#4a3a2a", "#1d2b28", "#5b6370"],
+  shoes: ["#f1eadb", "#1f1a17", "#7a4b3a", "#b8232a", "#2d3a6b", "#c9a43a"],
+  hair: ["#1f1a17", "#3a2418", "#5a3b22", "#8a5a2b", "#b88a4a", "#2a2a30"],
+};
+export function randomOutfit(): Outfit { const pick = (k: keyof Outfit) => WARDROBE[k][Math.floor(Math.random() * WARDROBE[k].length)]; return { top: pick("top"), bottom: pick("bottom"), shoes: pick("shoes"), hair: pick("hair") }; }
+const SLOTS: [RegExp, keyof Outfit][] = [[/jumper/i, "top"], [/trous/i, "bottom"], [/shoe/i, "shoes"], [/^hair/i, "hair"]];
+/** Recolour a character's clothes and hair; before the model has loaded, it is applied as soon as it arrives. */
+export function dressAvatar(person: Person, outfit: Outfit) {
+  person.root.userData.outfit = outfit;
+  person.root.traverse(o => {
+    if (!(o instanceof T.SkinnedMesh)) return; const slot = SLOTS.find(([re]) => re.test((o.material as T.Material).name)); if (!slot) return;
+    if (!o.userData.ownMaterial) { o.material = (o.material as T.Material).clone(); o.userData.ownMaterial = true; } // the template stays as modelled
+    (o.material as T.MeshStandardMaterial).color.set(outfit[slot[1]]);
+  });
+}
+
 /** Download and rig the character once; avatars made before it arrives are filled in when it does. */
 export function loadAvatar() {
   return loading ??= new GLTFLoader().loadAsync("/models/character.glb").then(gltf => {
@@ -39,8 +59,8 @@ export function loadAvatar() {
   });
 }
 
-/** A rigged copy of the character; `tint` recolours the jumper (other players wear their colour). */
-export function makeAvatar(tint?: string): Person {
+/** A rigged copy of the character, optionally dressed in an outfit. */
+export function makeAvatar(outfit?: Outfit): Person {
   const root = new T.Group(), body = new T.Group(); root.add(body);
   const bone = (parent: T.Object3D, x: number, y: number) => { const b = new T.Bone(); b.position.set(x, y, 0); parent.add(b); return b; };
   const pelvis = bone(body, 0, HIP), bones: T.Bone[] = [pelvis], arms: { side: number; hang: T.Bone; frame: T.Bone; fore: T.Bone }[] = [];
@@ -59,13 +79,14 @@ export function makeAvatar(tint?: string): Person {
     const scales = bones.map(b => b.scale.clone()); bones.forEach(b => { b.rotation.set(0, 0, 0); b.scale.setScalar(1); }); body.position.set(0, 0, 0); body.rotation.set(0, 0, 0); root.updateMatrixWorld(true);
     const skeleton = new T.Skeleton(bones);
     for (const part of parts!) {
-      let material = part.material; if (tint && /jumper/i.test(material.name)) { material = material.clone(); (material as T.MeshStandardMaterial).color.set(tint); }
-      const mesh = new T.SkinnedMesh(part.geometry, material); mesh.name = part.name; mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = false; mesh.userData.shared = true;
+      const mesh = new T.SkinnedMesh(part.geometry, part.material); mesh.name = part.name; mesh.frustumCulled = false; mesh.castShadow = mesh.receiveShadow = false; mesh.userData.shared = true;
       body.add(mesh); mesh.updateMatrixWorld(true); mesh.bind(skeleton);
     }
-    bones.forEach((b, i) => b.scale.copy(scales[i]));
+    bones.forEach((b, i) => b.scale.copy(scales[i])); if (root.userData.outfit) dressAvatar(person, root.userData.outfit);
     for (const { side, hang, frame, fore } of arms) { hang.rotation.z = -side * HANG; frame.rotation.z = side * HANG; fore.rotation.z = -side * HANG; }
   };
+  const person: Person = { root, body, hips, knees, shoulders, elbows, hands, head };
+  if (outfit) root.userData.outfit = outfit;
   if (parts) fill(); else pending.add(fill);
-  return { root, body, hips, knees, shoulders, elbows, hands, head };
+  return person;
 }

@@ -7,8 +7,8 @@ import { createBuilding,rooms } from "./building";
 import { Walker } from "./controller";
 import { createPost,FAR_LAYER,type Post } from "./post";
 import { wind } from "./materials";
-import { makePerson,walk as stride } from "./people";
-import { loadAvatar,makeAvatar } from "./avatar";
+import { makePerson,walk as stride,sit as sitPose } from "./people";
+import { loadAvatar,makeAvatar,dressAvatar,type Outfit } from "./avatar";
 import type { PlayerState } from "./net";
 import { computeBoundsTree,acceleratedRaycast } from "three-mesh-bvh";
 // BVH-accelerated picking: rays test a few dozen triangles instead of every triangle in a room.
@@ -94,26 +94,42 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  self.root.visible=false;scene.add(self.root);let gait=0;
  // Friends in the room (net.ts): each one is an articulated person easing toward their latest pose, walking at
  // the speed they really walk, with a name tag that lights up green while they talk.
- type Remote={person:ReturnType<typeof makePerson>;tag:T.Sprite;canvas:HTMLCanvasElement;texture:T.CanvasTexture;name:string;color:string;talking:boolean;goal:PlayerState|null;gait:number;placed:boolean};
+ type Remote={person:ReturnType<typeof makePerson>;tag:T.Sprite;canvas:HTMLCanvasElement;texture:T.CanvasTexture;name:string;color:string;outfit:string;talking:boolean;goal:PlayerState|null;gait:number;placed:boolean};
  const remotes=new Map<string,Remote>(),skins=["#8d5a3b","#b9825c","#c99a76","#6f4630","#d8ab84"];
  function drawTag(r:Remote){const g=r.canvas.getContext("2d")!;g.clearRect(0,0,512,128);g.fillStyle="rgba(31,26,23,.72)";g.beginPath();g.roundRect(8,24,496,80,40);g.fill();
   g.fillStyle=r.talking?"#8fd19e":r.color;g.beginPath();g.arc(62,64,r.talking?20:15,0,Math.PI*2);g.fill();if(r.talking){g.strokeStyle="#8fd19e88";g.lineWidth=6;g.beginPath();g.arc(62,64,30,0,Math.PI*2);g.stroke();}
   g.fillStyle="#f1eadb";g.font="600 44px system-ui, sans-serif";g.textBaseline="middle";g.fillText(r.name.slice(0,16),104,66);r.texture.needsUpdate=true;}
- function makeRemote(id:string,name:string,color:string):Remote{
+ function makeRemote(id:string,name:string,color:string,outfit?:Outfit):Remote{
   let hash=0;for(const ch of id)hash=(hash*31+ch.charCodeAt(0))|0;
-  const person=avatarFailed?makePerson({skin:skins[Math.abs(hash)%skins.length],top:color,bottom:"#2d3a6b",hair:"#1f1a17",longHair:Math.abs(hash)%3===0}):makeAvatar(color);person.root.visible=false;scene.add(person.root);
+  const person=avatarFailed?makePerson({skin:skins[Math.abs(hash)%skins.length],top:outfit?.top??color,bottom:outfit?.bottom??"#2d3a6b",hair:outfit?.hair??"#1f1a17",longHair:Math.abs(hash)%3===0}):makeAvatar(outfit);person.root.visible=false;scene.add(person.root);
   const canvas=document.createElement("canvas");canvas.width=512;canvas.height=128;const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;
   const tag=new T.Sprite(new T.SpriteMaterial({map:texture,transparent:true,depthWrite:false}));tag.scale.set(.72,.18,1);tag.position.y=2.02;person.root.add(tag);
-  const r:Remote={person,tag,canvas,texture,name,color,talking:false,goal:null,gait:0,placed:false};drawTag(r);return r;}
+  const r:Remote={person,tag,canvas,texture,name,color,outfit:JSON.stringify(outfit??null),talking:false,goal:null,gait:0,placed:false};drawTag(r);return r;}
  function dropRemote(id:string){const r=remotes.get(id);if(!r)return;remotes.delete(id);scene.remove(r.person.root);r.person.root.traverse(o=>{if(o instanceof T.Mesh&&!o.userData.shared)o.geometry.dispose();});r.texture.dispose();(r.tag.material as T.SpriteMaterial).dispose();}
  function updateRemotes(dt:number){const k=1-Math.exp(-dt*12);for(const r of remotes.values()){const g=r.goal;if(!g)continue;const root=r.person.root;
   if(!r.placed){r.placed=true;root.position.set(g.x,g.y,g.z);root.rotation.y=g.yaw+Math.PI;}
   root.position.x+=(g.x-root.position.x)*k;root.position.y+=(g.y-root.position.y)*k;root.position.z+=(g.z-root.position.z)*k;
   const turn=Math.atan2(Math.sin(g.yaw+Math.PI-root.rotation.y),Math.cos(g.yaw+Math.PI-root.rotation.y));root.rotation.y+=turn*k;
-  r.gait+=dt*g.speed*3.4;stride(r.person,r.gait,options.motion?Math.min(1.6,g.speed/2.35):0);if(!g.grounded&&options.motion){for(const kn of r.person.knees)kn.rotation.x=.75;for(const h of r.person.hips)h.rotation.x=-.5;}
+  const perch=g.seat?perchById(g.seat):null;
+  if(perch){perch.at.getWorldPosition(seatAt);perch.at.getWorldDirection(seatFwd);root.position.set(seatAt.x,seatAt.y-SEAT_DROP,seatAt.z);root.rotation.y=Math.atan2(seatFwd.x,seatFwd.z);stride(r.person,0,0);sitPose(r.person);}
+  else{r.gait+=dt*g.speed*3.4;stride(r.person,r.gait,options.motion?Math.min(1.6,g.speed/2.35):0);if(!g.grounded&&options.motion){for(const kn of r.person.knees)kn.rotation.x=.75;for(const h of r.person.hips)h.rotation.x=-.5;}}
   r.person.head.rotation.x=-g.pitch*.5;
   // Standing where you stand (everyone arrives at the same spot): hidden until they step out of your eyes.
   r.person.root.visible=Math.hypot(root.position.x-camera.position.x,root.position.z-camera.position.z)>.55;}}
+ // Seats people share (the sofa, the conference chairs): a click takes the nearest free one, and a friend's seat is
+ // taken. While seated the walker stays on the seat and you can still look around; a movement key stands you up.
+ const SEAT_DROP=.45,seatAt=new T.Vector3(),seatFwd=new T.Vector3();let perched:{id:string;at:T.Object3D}|null=null;
+ function perchById(id:string){for(const a of areas.values())for(const p of a.perches??[])if(p.id===id)return p;return null;}
+ function seatTaken(id:string){for(const r of remotes.values())if(r.goal?.seat===id)return true;return false;}
+ function sitDown(group:string,point:T.Vector3){
+  let best:{id:string;at:T.Object3D}|null=null,bd=Infinity;
+  for(const a of areas.values())for(const p of a.perches??[]){if(p.group!==group||p.id===perched?.id||seatTaken(p.id))continue;p.at.getWorldPosition(seatAt);const d=seatAt.distanceToSquared(point);if(d<bd){bd=d;best=p;}}
+  if(!best){callbacks.notice("Every seat here is taken.");return;}
+  perched=best;best.at.getWorldPosition(seatAt);best.at.getWorldDirection(seatFwd);
+  player.clear();player.seated={x:seatAt.x,z:seatAt.z,eye:seatAt.y+.68};player.face(Math.atan2(-seatFwd.x,-seatFwd.z));
+  callbacks.notice("Press W, A, S, D or Space to stand up.");lastRender=0;
+ }
+ function standUp(){if(!perched)return;perched.at.getWorldPosition(seatAt);perched.at.getWorldDirection(seatFwd);perched=null;player.seated=null;player.place(seatAt.x+seatFwd.x*.65,seatAt.z+seatFwd.z*.65,player.yaw,player.pitch);lastRender=0;}
  // Doorways for the sound engine: where each opening is, refreshed with how open the door is.
  const doorSounds:DoorSound[]=building.doors.map(d=>{const c=d.portal.getCenter(new T.Vector3());return {rooms:d.rooms,open:0,x:c.x,y:c.y,z:c.z};});
  // Seated mode: the camera eases from the walker into a chair and squares up to a screen.
@@ -229,6 +245,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  }
  async function activate(object:T.Object3D|null,point:T.Vector3){
   if(!object)return;const action=object.userData.action as Action;
+  if(action.startsWith("sit:")){sitDown(action.slice(4),point);callbacks.action(action,point.clone());return;}
   if(action==="exit"){callbacks.action(action,point.clone());callbacks.action("shelf",openSecret(true));return;}
   if(action==="computer"||action==="laptop"){sit(action);callbacks.action(action,point.clone());return;}
   if(action.startsWith("door:")){
@@ -256,7 +273,8 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  }
  // Losing pointer lock while walking, with the page still focused, means the browser handled Escape.
  function lockChange(){if(document.pointerLockElement===canvas){player.active=true;callbacks.active(true);}else if(mode==="pointer"&&player.active){player.active=false;player.clear();callbacks.active(false,document.hasFocus());}}
- function keyDown(e:KeyboardEvent){if(!player.active||e.target instanceof HTMLInputElement)return;if(e.code==="Escape"){pause(true);return;}if(["KeyW","KeyA","KeyS","KeyD","ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space","KeyE","ShiftLeft","ShiftRight"].includes(e.code)){e.preventDefault();if(e.code==="KeyE"){if(!e.repeat)void interact();}else player.keys.add(e.code);}}
+ function keyDown(e:KeyboardEvent){if(!player.active||e.target instanceof HTMLInputElement)return;if(e.code==="Escape"){pause(true);return;}
+  if(perched&&["KeyW","KeyA","KeyS","KeyD","Space"].includes(e.code)){e.preventDefault();standUp();return;}if(["KeyW","KeyA","KeyS","KeyD","ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space","KeyE","ShiftLeft","ShiftRight"].includes(e.code)){e.preventDefault();if(e.code==="KeyE"){if(!e.repeat)void interact();}else player.keys.add(e.code);}}
  function keyUp(e:KeyboardEvent){player.keys.delete(e.code);}
  let pointerId:number|null=null,previousX=0,previousY=0,pressX=0,pressY=0;
  function down(e:PointerEvent){if(e.button===2){zoomHeld=true;lastRender=0;return;}pressX=e.clientX;pressY=e.clientY;if(!player.active||mode==="pointer")return;pointerId=e.pointerId;previousX=e.clientX;previousY=e.clientY;dragging=true;canvas.setPointerCapture(e.pointerId);}
@@ -300,8 +318,9 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   if(secretCloseAt&&now>secretCloseAt)closeSecret(now);
   building.update(dt,player.capsule,options.motion);player.update(dt,options.motion);
   updateRemotes(dt);
-  const speed=Math.hypot(player.velocity.x,player.velocity.z);self.root.visible=player.active&&!seat&&seatBlend===0;
-  if(self.root.visible){gait+=dt*speed*3.4;stride(self,gait,options.motion?Math.min(1.6,speed/2.35):0);if(!player.grounded&&options.motion){for(const k of self.knees)k.rotation.x=.75;for(const h of self.hips)h.rotation.x=-.5;}
+  const speed=Math.hypot(player.velocity.x,player.velocity.z);self.root.visible=(player.active||Boolean(perched))&&!seat&&seatBlend===0;
+  if(self.root.visible&&perched){perched.at.getWorldPosition(seatAt);perched.at.getWorldDirection(seatFwd);self.root.position.set(seatAt.x,seatAt.y-SEAT_DROP,seatAt.z);self.root.rotation.y=Math.atan2(seatFwd.x,seatFwd.z);stride(self,0,0);sitPose(self);}
+  else if(self.root.visible){gait+=dt*speed*3.4;stride(self,gait,options.motion?Math.min(1.6,speed/2.35):0);if(!player.grounded&&options.motion){for(const k of self.knees)k.rotation.x=.75;for(const h of self.hips)h.rotation.x=-.5;}
    self.root.position.set(player.capsule.start.x+Math.sin(player.yaw)*.16,player.capsule.start.y-.24,player.capsule.start.z+Math.cos(player.yaw)*.16);self.root.rotation.y=player.yaw+Math.PI;}
   if(player.active){if(wasGrounded&&player.velocity.y>2.5)callbacks.cue?.("jump",camera.position);else if(!wasGrounded&&player.grounded&&fallSpeed<-1.5)callbacks.cue?.("land",player.capsule.start);}
   if(Math.abs(camera.fov-fovGoal)>.01){camera.fov+=(fovGoal-camera.fov)*(options.motion?1-Math.exp(-dt*10):1);camera.updateProjectionMatrix();}
@@ -399,9 +418,11 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  /** A member signed in: the bookshelf opens and the hidden door can be used. Returns where it happens, for sound. */
  unlock(){return openSecret(false);},
  /** Where you are, for friends in the room. */
- localState():PlayerState{const c=player.capsule.start;return {x:c.x,y:c.y-.24,z:c.z,yaw:player.yaw,pitch:player.pitch,speed:Math.hypot(player.velocity.x,player.velocity.z),grounded:player.grounded,room:areaId};},
+ localState():PlayerState{const c=player.capsule.start;return {x:c.x,y:c.y-.24,z:c.z,yaw:player.yaw,pitch:player.pitch,speed:Math.hypot(player.velocity.x,player.velocity.z),grounded:player.grounded,room:areaId,seat:perched?.id};},
  /** Add or refresh a friend: name, shirt colour, and whether they are talking. */
- friend(id:string,name:string,color:string,talking:boolean){let r=remotes.get(id);if(r&&r.color!==color){dropRemote(id);r=undefined;}if(!r){r=makeRemote(id,name,color);remotes.set(id,r);}if(r.name!==name||r.talking!==talking){r.name=name;r.talking=talking;drawTag(r);}lastRender=0;},
+ /** Your outfit for this visit (a fresh random one each time you join a room). */
+ dress(outfit:Outfit){dressAvatar(self,outfit);},
+ friend(id:string,name:string,color:string,talking:boolean,outfit?:Outfit){let r=remotes.get(id);if(r&&(r.color!==color||r.outfit!==JSON.stringify(outfit??null))){dropRemote(id);r=undefined;}if(!r){r=makeRemote(id,name,color,outfit);remotes.set(id,r);}if(r.name!==name||r.talking!==talking){r.name=name;r.talking=talking;drawTag(r);}lastRender=0;},
  /** A song is playing on the record player (the platter turns). Cheap: no renderer changes. */
  setMusic(on:boolean){options.music=on;},
  moveFriend(id:string,state:PlayerState){const r=remotes.get(id);if(r)r.goal=state;},
@@ -410,7 +431,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  setDoor(id:string,open:boolean){const door=building.doors.find(d=>d.id===id);if(door&&(Math.abs(door.target)>.3)!==open)building.toggle(id);lastRender=0;},
  debugScene(){return scene;},debugRenderer(){return renderer;},benchmark(on:boolean){if(on){benchOn=true;Object.assign(bench,{frames:0,cpu:0,full:0,calls:0,tris:0});return null;}benchOn=false;const n=Math.max(1,bench.frames);return {frames:bench.frames,cpuMs:+(bench.cpu/n).toFixed(2),frameMs:+(bench.full/n).toFixed(2),calls:Math.round(bench.calls/n),tris:Math.round(bench.tris/n)};},
  // Development aid for visual QA: jump to a spot, loading whatever rooms are near it.
- async teleport(x:number,z:number,yaw:number,pitch=-.05){for(const id of Object.keys(rooms) as Location[])if(Math.hypot(rooms[id].center[0]-x,rooms[id].center[1]-z)<9)await load(id);for(const door of building.doors)if(!door.locked)door.target=Math.PI*.53*door.swing;player.place(x,z,yaw,pitch);lastRender=0;},setOptions(next:WorldOptions){options={...next};baseFov=(options.fov??68)+(camera.aspect<.8?10:0);if(post){post.ao.enabled=options.ao!==false&&!aoOff;post.bloom.enabled=options.bloom!==false;post.grain(options.grain!==false);}if(outdoors)outdoors.setLife(options.life!==false);if(!postWanted()&&post){post.dispose();post=null;}renderer.setPixelRatio(ratio());sizePost();lastRender=0;},
+ async teleport(x:number,z:number,yaw:number,pitch=-.05){perched=null;player.seated=null;for(const id of Object.keys(rooms) as Location[])if(Math.hypot(rooms[id].center[0]-x,rooms[id].center[1]-z)<9)await load(id);for(const door of building.doors)if(!door.locked)door.target=Math.PI*.53*door.swing;player.place(x,z,yaw,pitch);lastRender=0;},setOptions(next:WorldOptions){options={...next};baseFov=(options.fov??68)+(camera.aspect<.8?10:0);if(post){post.ao.enabled=options.ao!==false&&!aoOff;post.bloom.enabled=options.bloom!==false;post.grain(options.grain!==false);}if(outdoors)outdoors.setLife(options.life!==false);if(!postWanted()&&post){post.dispose();post=null;}renderer.setPixelRatio(ratio());sizePost();lastRender=0;},
  dispose(){destroyed=true;pause();renderer.setAnimationLoop(null);resize.disconnect();document.removeEventListener("pointerlockchange",lockChange);document.removeEventListener("keydown",keyDown);document.removeEventListener("keyup",keyUp);document.removeEventListener("visibilitychange",visibility);window.removeEventListener("blur",blurred);canvas.removeEventListener("pointerdown",down);canvas.removeEventListener("pointermove",move);canvas.removeEventListener("pointerup",up);canvas.removeEventListener("pointercancel",up);canvas.removeEventListener("pointerleave",leave);canvas.removeEventListener("click",click);canvas.removeEventListener("webglcontextlost",lost);canvas.removeEventListener("contextmenu",context);document.removeEventListener("mouseup",mouseUp);for(const area of areas.values())area.dispose?.();for(const id of Array.from(remotes.keys()))dropRemote(id);post?.dispose();scene.environment?.dispose();disposeObject(scene);light.shadow.dispose();renderer.dispose();renderer.forceContextLoss();canvas.remove();}
  };
 }

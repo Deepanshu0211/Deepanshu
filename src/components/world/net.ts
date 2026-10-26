@@ -7,12 +7,13 @@
 // Movement goes out ~15 times a second; voice is a WebRTC audio call between each pair, placed in 3D by audio.ts.
 import type { DataConnection, MediaConnection, Peer as PeerType } from "peerjs";
 import type { Location } from "./objects";
+import type { Outfit } from "./avatar";
 
 export const MAX_PLAYERS = 8;
-export interface PlayerState { x: number; y: number; z: number; yaw: number; pitch: number; speed: number; grounded: boolean; room: Location }
-export interface Player { id: string; name: string; color: string; talking: boolean; mic: boolean; state: PlayerState | null }
+export interface PlayerState { x: number; y: number; z: number; yaw: number; pitch: number; speed: number; grounded: boolean; room: Location; /** The seat they are sitting on (a perch id), if any. */ seat?: string }
+export interface Player { id: string; name: string; color: string; talking: boolean; mic: boolean; state: PlayerState | null; outfit?: Outfit }
 type Message =
-  | { t: "hello"; name: string; color: string; mic: boolean }
+  | { t: "hello"; name: string; color: string; mic: boolean; outfit?: Outfit }
   | { t: "roster"; ids: string[] }
   | ({ t: "s" } & PlayerState)
   | { t: "talk"; on: boolean }
@@ -47,14 +48,14 @@ export class Lobby {
   private Peer: typeof PeerType | null = null; private me: PeerType | null = null; private keeper: PeerType | null = null; private point = "";
   private links = new Map<string, { data: DataConnection; call?: MediaConnection; player: Player }>();
   private config: RTCConfiguration = STUN_ONLY; private relay = false;
-  private mic: MediaStream | null = null; private self = { name: "", color: "", mic: false }; private left = false;
+  private mic: MediaStream | null = null; private self: { name: string; color: string; mic: boolean; outfit?: Outfit } = { name: "", color: "", mic: false }; private left = false;
   constructor(private events: LobbyEvents) {}
   get id() { return this.me?.id ?? ""; }
   get players() { return Array.from(this.links.values(), l => l.player); }
   get micStream() { return this.mic; }
 
-  async join(code: string, name: string, color: string, wantMic: boolean) {
-    this.leave(); this.left = false; this.self = { name, color, mic: false };
+  async join(code: string, name: string, color: string, wantMic: boolean, outfit?: Outfit) {
+    this.leave(); this.left = false; this.self = { name, color, mic: false, outfit };
     this.events.status("connecting", "Finding your room…");
     if (wantMic) {
       try { this.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); this.self.mic = true; }
@@ -104,8 +105,10 @@ export class Lobby {
   private receive(id: string, m: Message) {
     const link = this.links.get(id); if (!link) return;
     switch (m.t) {
-      case "hello": link.player.name = m.name.slice(0, 24) || "Friend"; link.player.color = /^#[0-9a-f]{6}$/i.test(m.color) ? m.color : "#e0a526"; link.player.mic = m.mic; this.emitRoster(); this.callIfMine(id); this.events.status("in-room", `${this.links.size + 1} in the room`); break;
-      case "s": { const { t: _t, ...state } = m; void _t; link.player.state = state; this.events.move(id, state); break; }
+      case "hello": link.player.name = m.name.slice(0, 24) || "Friend"; link.player.color = /^#[0-9a-f]{6}$/i.test(m.color) ? m.color : "#e0a526"; link.player.mic = m.mic;
+        { const o = m.outfit, hex = (v: unknown) => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v); link.player.outfit = o && hex(o.top) && hex(o.bottom) && hex(o.shoes) && hex(o.hair) ? { top: o.top, bottom: o.bottom, shoes: o.shoes, hair: o.hair } : undefined; }
+        this.emitRoster(); this.callIfMine(id); this.events.status("in-room", `${this.links.size + 1} in the room`); break;
+      case "s": { const { t: _t, ...state } = m; void _t; if (state.seat !== undefined && (typeof state.seat !== "string" || state.seat.length > 32)) delete state.seat; link.player.state = state; this.events.move(id, state); break; }
       case "talk": link.player.talking = m.on; this.emitRoster(); break;
       case "door": this.events.door(m.id, m.open); break;
     }

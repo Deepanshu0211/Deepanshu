@@ -1,6 +1,6 @@
 import * as T from "three";
 import { projects } from "./content";
-import { type Area, colors as c, box, sphere, cylinder, sign, plant, interactive, canvasTexture } from "./objects";
+import { type Area, colors as c, box, sphere, cylinder, group, sign, plant, interactive, canvasTexture } from "./objects";
 import { fabric, ceramic, metal, emissive, surface, geoRug } from "./materials";
 import { sofa, armchair, table, rug, arcLamp, ceilingFan, frame, curtains, mug, bowlOfFruit, vase, books, place, mesh, lathe, cushion, finishes } from "./furniture";
 
@@ -22,7 +22,9 @@ export function createLiving(): Area {
   const root = new T.Group(); let alive = true, catUntil = 0, clockAt = 0;
   const oak = finishes.oak(), walnut = finishes.walnut();
   rug(root, [1.0, 0, -1.5], [3.2, 2.5], "#ffffff", geoRug("#1d5566", "#d8a93a", "#d0602f", "#5f9fae"));
-  sofa(root, [-.4, 0, -1.5], Math.PI / 2, "#2d3a6b", 2.4);
+  // The sofa seats three, friends included: a click sits you on the nearest free cushion.
+  const couch = interactive(sofa(root, [-.4, 0, -1.5], Math.PI / 2, "#2d3a6b", 2.4), "sit:sofa", "Sit on the sofa");
+  const perches = [-.68, 0, .68].map((x, i) => ({ id: `sofa-${i}`, group: "sofa", at: group(couch, [x, .52, .12]) }));
   const throwBlanket = mesh(root, cushion(.5, .035, .55, .25, .006, .015), [-.2, .585, -2.2], fabric("#c9a43a", .95)); throwBlanket.rotation.y = .18;
   // Jewel-toned cushions against the navy: emerald, coral and lacquer red.
   for (const [z, color] of [[-2.35, "#1f6b4a"], [-1.5, "#d9786a"], [-.7, "#b8232a"]] as [number, string][]) mesh(root, cushion(.42, .14, .42, .95, 0, .05), [-.55, .74, z], fabric(color, .95)).rotation.set(0, z < -1 ? .2 : -.15, Math.PI / 2 + .32);
@@ -104,7 +106,7 @@ export function createLiving(): Area {
   const hourHand = box(clock, [.012, .1, .004], [0, .04, .02], new T.MeshStandardMaterial({ color: "#222" }), 0), minuteHand = box(clock, [.008, .16, .004], [0, .07, .024], new T.MeshStandardMaterial({ color: "#222" }), 0);
   for (const hand of [hourHand, minuteHand]) { hand.geometry.translate(0, hand.position.y, 0); hand.position.y = 0; hand.userData.dynamic = true; }
   return {
-    root, camera: [9, 7.8, 11], target: [0, 1.2, 0], anchors: [],
+    root, camera: [9, 7.8, 11], target: [0, 1.2, 0], anchors: [], perches,
     interact(action) { if (action === "cat") catUntil = performance.now() + 2600; },
     update(time, delta, options) {
       if (options.motion) fan.blades.rotation.y -= delta * 4.4 * (options.fan ?? 1);

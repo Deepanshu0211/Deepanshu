@@ -58,7 +58,7 @@ export default function CozyPortfolio(){
   if(action==="multiplayer"){engine.current?.pause();setNetOpen(true);audio.current?.ui("boot");return;}
   // A member who signed in this visit is let straight through; it resets on reload.
   if(action==="secret"){if(member)letIn(`Welcome back, ${member}.`);else setSecret(true);return;}
-  if(action==="exit"||action==="shelf")return; // the engine moves the shelf; the sound already played
+  if(action==="exit"||action==="shelf"||action.startsWith("sit:"))return; // the engine moves the shelf; the sound already played
   if(action==="cat"){announce("Mishti stretches, purrs once, and goes straight back to sleep.");return;}
   if(action==="radio"){if(!sound)announce("Turn sound on to hear the radio — it plays from the counter, so walk closer.");else announce("The radio crackles on. Walk away and it fades.");return;}
   if(action==="record"){setSpotify(true);return;}

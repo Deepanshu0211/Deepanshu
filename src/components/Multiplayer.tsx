@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from "react";
 import type {WorldEngine} from "./world/engine";
 import type {RoomAudio} from "./world/audio";
 import {Lobby,cleanCode,randomCode,type Player} from "./world/net";
+import {randomOutfit} from "./world/avatar";
 import styles from "./Multiplayer.module.css";
 
 const SWATCHES=["#2f4f43","#b4532a","#2d3a6b","#e0a526","#7a4b3a","#8a3b6b"];
@@ -24,7 +25,7 @@ export default function Multiplayer({open,onClose,onJoined,onTrouble,getEngine,g
  useEffect(()=>{
   const l=new Lobby({
    status:(p,text)=>{setPhase(p);setStatus(text);if(p==="error")trouble.current();},
-   roster:list=>{const seen=new Set(list.map(p=>p.id));for(const id of friends.current.keys())if(!seen.has(id))friends.current.delete(id);for(const p of list){friends.current.set(p.id,p);getEngine()?.friend(p.id,p.name,p.color,talking.current.friends.get(p.id)??false);}setPlayers(list);},
+   roster:list=>{const seen=new Set(list.map(p=>p.id));for(const id of friends.current.keys())if(!seen.has(id))friends.current.delete(id);for(const p of list){friends.current.set(p.id,p);getEngine()?.friend(p.id,p.name,p.color,talking.current.friends.get(p.id)??false,p.outfit);}setPlayers(list);},
    move:(id,s)=>{getEngine()?.moveFriend(id,s);getAudio().moveVoice(id,s.x,s.y+1.55,s.z);},
    leave:id=>{getEngine()?.dropFriend(id);getAudio().dropVoice(id);talking.current.friends.delete(id);},
    voice:(id,stream)=>{const s=friends.current.get(id)?.state;void getAudio().voice(id,stream,{x:s?.x??0,y:(s?.y??0)+1.55,z:s?.z??0});},
@@ -38,7 +39,7 @@ export default function Multiplayer({open,onClose,onJoined,onTrouble,getEngine,g
   if(phase!=="in-room")return;let tick=0;
   const timer=window.setInterval(()=>{const l=lobby.current,e=getEngine();if(!l||!e)return;l.send(e.localState());
    if(++tick%2)return;const levels=getAudio().levels(),me=levels.me>.07;if(me!==talking.current.me){talking.current.me=me;setMeTalking(me);l.talking(me);}
-   for(const [id,level] of levels.friends){const on=level>.06;if(on!==(talking.current.friends.get(id)??false)){talking.current.friends.set(id,on);const p=friends.current.get(id);if(p)e.friend(id,p.name,p.color,on);setPlayers(list=>list.map(q=>q.id===id?{...q,talking:on}:q));}}
+   for(const [id,level] of levels.friends){const on=level>.06;if(on!==(talking.current.friends.get(id)??false)){talking.current.friends.set(id,on);const p=friends.current.get(id);if(p)e.friend(id,p.name,p.color,on,p.outfit);setPlayers(list=>list.map(q=>q.id===id?{...q,talking:on}:q));}}
   },66);
   return()=>clearInterval(timer);
  },[phase,getEngine,getAudio]);
@@ -58,7 +59,9 @@ export default function Multiplayer({open,onClose,onJoined,onTrouble,getEngine,g
   const asked=!mic||await navigator.permissions?.query({name:"microphone" as PermissionName}).then(p=>p.state==="granted").catch(()=>false);
   onJoined(Boolean(asked));
   setRoom(room);const audio=getAudio();if(!audio.on)await audio.toggle();
-  await lobby.current?.join(room,who,color,mic);const stream=lobby.current?.micStream??null;audio.setMic(stream);setHasMic(Boolean(stream));
+  // A fresh random outfit every time you join, so friends in the room look different from each other.
+  const outfit=randomOutfit();getEngine()?.dress(outfit);
+  await lobby.current?.join(room,who,color,mic,outfit);const stream=lobby.current?.micStream??null;audio.setMic(stream);setHasMic(Boolean(stream));
  }
  function leave(){lobby.current?.leave();getAudio().setMic(null);for(const id of friends.current.keys()){getEngine()?.dropFriend(id);getAudio().dropVoice(id);}friends.current.clear();setRoom("");setHasMic(false);}
  async function copy(){try{await navigator.clipboard.writeText(`${location.origin}${location.pathname}#join=${room}`);setCopied(true);setTimeout(()=>setCopied(false),1800);}catch{setStatus("Copy didn’t work here. Share the code instead.");}}
