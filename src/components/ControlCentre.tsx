@@ -13,7 +13,7 @@ function Toggle({on,onChange,label}:{on:boolean;onChange:(v:boolean)=>void;label
 function Slider({value,min,max,step,onChange,label,format}:{value:number;min:number;max:number;step:number;onChange:(v:number)=>void;label:string;format:(v:number)=>string}){return <label className={styles.slider}><input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(Number(e.target.value))} aria-label={label}/><output>{format(value)}</output></label>;}
 
 // Everything a visitor can tune, in one sheet: atmosphere, view, graphics, the neighbourhood, and shortcuts.
-export default function ControlCentre(props:{open:boolean;onClose:()=>void;prefs:Prefs;setPref:<K extends keyof Prefs>(k:K,v:Prefs[K])=>void;weather:Weather;setWeather:(w:Weather|"live")=>void;weatherMode:"live"|"manual";live:Live|null;usePrecise:()=>void;precise:boolean;lamp:boolean;setLamp:(v:boolean)=>void;motion:boolean;setMotion:(v:boolean)=>void;quality:"auto"|"low";setQuality:(v:"auto"|"low")=>void;rtx:boolean;setRtx:(v:boolean)=>void;sound:boolean;toggleSound:()=>void;go:(where:string)=>void;touch:boolean}){
+export default function ControlCentre(props:{open:boolean;onClose:()=>void;prefs:Prefs;setPref:<K extends keyof Prefs>(k:K,v:Prefs[K])=>void;weather:Weather;setWeather:(w:Weather|"live")=>void;weatherMode:"live"|"manual";live:Live|null;usePrecise:()=>void;precise:boolean;lamp:boolean;setLamp:(v:boolean)=>void;motion:boolean;setMotion:(v:boolean)=>void;quality:"auto"|"low";setQuality:(v:"auto"|"low")=>void;sound:boolean;toggleSound:()=>void;go:(where:string)=>void;touch:boolean}){
  const {open,onClose,prefs,setPref}=props,sheet=useRef<HTMLElement>(null);
  useEffect(()=>{if(!open)return;const key=(e:KeyboardEvent)=>{if(e.key==="Escape")onClose();};window.addEventListener("keydown",key);
   if(props.motion&&sheet.current)gsap.fromTo(sheet.current.querySelectorAll("[data-group]"),{x:24,opacity:0},{x:0,opacity:1,duration:.6,stagger:.05,ease:"expo.out",clearProps:"all"});
@@ -38,7 +38,6 @@ export default function ControlCentre(props:{open:boolean;onClose:()=>void;prefs
    </section>
    <section data-group><h3>Graphics</h3>
     <Row label="Quality"><div className={styles.segment}>{(["auto","low"] as const).map(q=><button key={q} role="radio" aria-checked={props.quality===q} onClick={()=>props.setQuality(q)}>{q==="auto"?"High":"Fast"}</button>)}</div></Row>
-    {!props.touch&&<Row label="Ray tracing (RTX)" hint="path traced while you stand still"><Toggle label="Ray tracing" on={props.rtx} onChange={props.setRtx}/></Row>}
     <Row label="Ambient occlusion"><Toggle label="Ambient occlusion" on={prefs.ao} onChange={v=>setPref("ao",v)}/></Row>
     <Row label="Bloom"><Toggle label="Bloom" on={prefs.bloom} onChange={v=>setPref("bloom",v)}/></Row>
     <Row label="Film grain & vignette"><Toggle label="Film grain" on={prefs.grain} onChange={v=>setPref("grain",v)}/></Row>
@@ -51,7 +50,7 @@ export default function ControlCentre(props:{open:boolean;onClose:()=>void;prefs
     <Row label="Record player" hint="your songs and Spotify"><button className={styles.inline} onClick={()=>props.go("spotify")}>Open ↗</button></Row>
    </section>
    <section data-group><h3>Go to</h3>
-    <div className={styles.links}>{[["computer","Sit at the computer"],["projects","All projects"],["profile","Profile & certificates"],["skills","Skills"],["experience","Experience"],["telescope","The telescope"],["contact","Say hello"],["credits","About this world"],["reading","Reading mode"]].map(([k,l])=><button key={k} onClick={()=>props.go(k)}>{l}<span aria-hidden="true">↗</span></button>)}</div>
+    <div className={styles.links}>{[["friends","Play with friends"],["computer","Sit at the computer"],["projects","All projects"],["profile","Profile & certificates"],["skills","Skills"],["experience","Experience"],["telescope","The telescope"],["contact","Say hello"],["credits","About this world"],["reading","Reading mode"]].map(([k,l])=><button key={k} onClick={()=>props.go(k)}>{l}<span aria-hidden="true">↗</span></button>)}</div>
    </section>
   </aside>
  </>;

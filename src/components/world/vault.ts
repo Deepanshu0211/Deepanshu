@@ -40,14 +40,31 @@ export function createVault(): Area {
   // The way out: a brass button on the wall beside the door's latch side opens the shelf and the door from inside.
   const exit = interactive(group(root, [1.9, 1.2, 1.1]), "exit", "Brass button · open the bookshelf");
   box(exit, [.008, .13, .09], [-.004, 0, 0], finishes.brass(), .003); cylinder(exit, .018, .02, .016, [-.012, 0, 0], metal("#c9a45c", .25), 24).rotation.z = Math.PI / 2;
+  // The netlink terminal on a console in the north-east corner: type a room code here and friends who type the
+  // same code walk into this world with you (net.ts). Its amber screen glows even with the lamps off.
+  const consoleTable = place(root, [1.4, 0, 2.55], -Math.PI / 2);
+  table(consoleTable, [0, 0, 0], [.8, .76, .5], walnut, finishes.blackMetal());
+  const terminal = interactive(group(consoleTable, [0, .76, -.02]), "multiplayer", "Netlink terminal · play with friends using a room code");
+  box(terminal, [.5, .4, .36], [0, .25, -.04], "#d8cfb8", .035); box(terminal, [.28, .04, .22], [0, .02, -.02], "#c9bfa6", .02);
+  const screenTexture = canvasTexture(ctx => {
+    ctx.fillStyle = "#120c06"; ctx.fillRect(0, 0, 512, 384); ctx.fillStyle = "#ffb347"; ctx.shadowColor = "#ff9a2a"; ctx.shadowBlur = 8;
+    ctx.font = "600 34px monospace"; ctx.fillText("NETLINK // ROOM CODE", 30, 70); ctx.font = "500 26px monospace";
+    ["ROOM CODE ▸ _ _ _ _", "", "same code, same world.", "voices carry, walls muffle.", "", "press E to dial in"].forEach((line, i) => ctx.fillText(line, 30, 140 + i * 38));
+    for (let y = 0; y < 384; y += 3) { ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.fillRect(0, y, 512, 1); } // scanlines
+  }, 512, 384);
+  const screen = new T.Mesh(new T.PlaneGeometry(.42, .31), new T.MeshBasicMaterial({ map: screenTexture, color: new T.Color(1.25, 1.25, 1.25) })); screen.position.set(0, .27, .141); terminal.add(screen);
+  const cursor = new T.Mesh(new T.PlaneGeometry(.018, .026), emissive("#ffb347", 2)); cursor.position.set(.058, .298, .142); cursor.userData.dynamic = true; terminal.add(cursor);
+  box(terminal, [.42, .022, .15], [0, .011, .21], "#cfc5ac", .01);
+  for (let r = 0; r < 4; r++) for (let k = 0; k < 10; k++) box(terminal, [.03, .011, .026], [-.18 + k * .04, .026, .155 + r * .031], "#b9ae95", .004);
   // Lamplight, dark until a member opens the door. Lights are kept to the west half so little reaches the rooms next door.
   const glow = [new T.PointLight("#ffc98a", 0, 4.5, 2), new T.PointLight("#ffb766", 0, 2.5, 2)];
   glow[0].position.set(-.6, 2.55, 0); glow[1].position.set(-.05, 1.15, 2.95); root.add(...glow);
   let lit = 0, goal = 0;
   return {
-    root, camera: [0, 1.65, 0], target: [0, 1, 0], anchors: [],
+    root, camera: [0, 1.65, 0], target: [0, 1, 0], anchors: [{ name: "Netlink terminal", action: "multiplayer", point: new T.Vector3(1.4, 1.3, 2.55) }],
     reveal() { goal = 1; },
     update(time, delta, options) {
+      cursor.visible = !options.motion || Math.floor(time * 1.6) % 2 === 0; // the terminal cursor blinks
       if (lit === goal) return; lit = options.motion ? Math.min(goal, lit + delta * .8) : goal;
       glow[0].intensity = lit * 3.2; glow[1].intensity = lit * 1.6;
     },

@@ -1,0 +1,44 @@
+.panel{position:fixed;right:24px;bottom:84px;z-index:36;width:min(380px,calc(100vw - 32px));max-height:calc(100vh - 120px);overflow:auto;background:#1f1a17;color:#f1eadb;border-radius:16px;padding:12px 14px 14px;box-shadow:0 24px 70px #0008;animation:pop .5s cubic-bezier(.16,1,.3,1) both}
+.panel header{display:flex;justify-content:space-between;align-items:center;padding:2px 2px 10px;font:500 10px var(--font-mono);letter-spacing:.16em;color:#c2b191}
+.panel header button{width:32px;height:32px;border-radius:50%;font-size:20px;color:#f1eadb}
+.panel h2{font-size:24px;font-weight:500;letter-spacing:-.02em;margin:2px 0 8px}
+.panel h2 em{font-family:Georgia,serif;color:#e0a526}
+.panel p{font-size:13px;line-height:1.6;color:#d8ccb5;margin:0 0 12px}
+.form{display:grid;gap:12px}
+.form label{display:grid;gap:6px;font:500 10px var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:#b8a78c}
+.form input:not([type="checkbox"]){min-height:42px;padding:0 12px;border-radius:10px;border:1px solid #f1eadb26;background:#2a231e;color:#f1eadb;font:500 15px var(--font-mono);letter-spacing:.04em;text-transform:none}
+.form input:focus-visible{outline:2px solid #e0a526;outline-offset:1px}
+.code{display:flex;gap:6px}.code input{flex:1;min-width:0}
+.code button{width:42px;border-radius:10px;background:#2a231e;font-size:18px}
+.swatches{display:flex;gap:8px}
+.swatches button{width:28px;height:28px;border-radius:50%;border:2px solid transparent;box-shadow:inset 0 0 0 2px #1f1a17}
+.swatches button[aria-checked="true"]{border-color:#f1eadb}
+.check{display:flex!important;grid-template-columns:none;align-items:center;gap:10px!important;text-transform:none!important;font:400 13px inherit!important;letter-spacing:0!important;color:#d8ccb5!important}
+.check input{width:18px;height:18px;accent-color:#e0a526}
+.check small{display:block;font-size:11px;color:#9d8e78}
+.error{color:#f0a07c!important}
+.join{display:flex;justify-content:space-between;align-items:center;min-height:48px;padding:0 18px;border-radius:12px;background:#e0a526;color:#1f1a17;font-weight:600}
+.join:disabled{opacity:.6}
+.fine{display:block;font-size:10.5px;line-height:1.5;color:#9d8e78}
+.room h2{display:flex;align-items:baseline;gap:10px;font-family:var(--font-mono);font-size:22px}
+.room h2 span{font-size:10px;letter-spacing:.16em;color:#b8a78c}
+.status{font-size:12px!important;color:#c2b191!important}
+.roster{list-style:none;padding:0;margin:0 0 12px;display:grid;gap:4px}
+.roster li{display:flex;align-items:center;gap:10px;min-height:38px;padding:0 10px;border-radius:10px;background:#2a231e;font-size:14px;transition:box-shadow .2s}
+.roster li[data-talking="true"]{box-shadow:inset 0 0 0 1.5px #8fd19e}
+.roster li i{width:12px;height:12px;border-radius:50%}
+.roster li small{margin-left:auto;font:500 10px var(--font-mono);color:#9d8e78;letter-spacing:.04em}
+.controls{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.controls button{min-height:36px;padding:0 12px;border-radius:9px;background:#2a231e;font-size:12px;color:#f1eadb}
+.controls button[aria-pressed="true"]{background:#f1eadb;color:#1f1a17}
+.controls kbd{font:500 9px var(--font-mono);opacity:.7;margin-left:4px}
+.leave{background:#5a2a1c!important}
+.chip{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:10px;padding:6px 12px;border-radius:999px;background:#1f1a17b8;backdrop-filter:blur(6px);color:#f1eadb;font:500 11px var(--font-mono);letter-spacing:.04em;pointer-events:none}
+.chip i{width:8px;height:8px;border-radius:50%;background:#c2b191;transition:background .15s,box-shadow .15s}
+.chip i[data-talking="true"]{background:#8fd19e;box-shadow:0 0 0 4px #8fd19e33}
+.chip span{color:#c2b191}
+.chip[data-phase="connecting"] i{background:#e0a526;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.3}}
+@keyframes pop{from{opacity:0;transform:translateY(16px) scale(.98)}}
+@media(max-width:700px){.panel{right:16px;left:16px;width:auto;bottom:16px}.chip{top:64px}}
+@media(prefers-reduced-motion:reduce){.panel,.chip i{animation:none!important}}

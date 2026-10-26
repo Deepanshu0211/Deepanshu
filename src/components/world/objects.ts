@@ -3,10 +3,10 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { surface, leafTexture, mottle, projectSurfaces, windify } from "./materials";
 
-export type Action = "projects" | "skills" | "about" | "experience" | "contact" | "lamp" | "weather" | "sound" | "keyboard" | "drawer" | "pet" | "duck" | "lab" | "chair" | "cat" | "telescope" | "computer" | "laptop" | "profile" | "record" | "radio" | "fridge" | "kettle" | "globe" | "swing" | "secret" | "exit" | "shelf" | `door:${string}` | `project:${string}` | `skill:${string}`;
+export type Action = "multiplayer" | "projects" | "skills" | "about" | "experience" | "contact" | "lamp" | "weather" | "sound" | "keyboard" | "drawer" | "pet" | "duck" | "lab" | "chair" | "cat" | "telescope" | "computer" | "laptop" | "profile" | "record" | "radio" | "fridge" | "kettle" | "globe" | "swing" | "secret" | "exit" | "shelf" | `door:${string}` | `project:${string}` | `skill:${string}`;
 export type Weather = "rain" | "day" | "sunset" | "night";
 export type Location = "bedroom" | "archive" | "rooftop" | "workshop" | "library" | "vault";
-export interface WorldOptions { motion: boolean; weather: Weather; lamp: boolean; quality: "auto" | "low"; rtx?: boolean; fov?: number; sensitivity?: number; lights?: number; fan?: number; life?: boolean; ao?: boolean; bloom?: boolean; grain?: boolean; volume?: number; }
+export interface WorldOptions { /** A song is playing on the record player. */ music?: boolean; motion: boolean; weather: Weather; lamp: boolean; quality: "auto" | "low"; fov?: number; sensitivity?: number; lights?: number; fan?: number; life?: boolean; ao?: boolean; bloom?: boolean; grain?: boolean; volume?: number; }
 export interface Area {
   root: T.Group;
   camera: [number, number, number];

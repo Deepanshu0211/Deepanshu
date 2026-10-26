@@ -8,6 +8,7 @@ import { Walker } from "./controller";
 import { createPost,FAR_LAYER,type Post } from "./post";
 import { wind } from "./materials";
 import { makePerson,walk as stride } from "./people";
+import type { PlayerState } from "./net";
 import { computeBoundsTree,acceleratedRaycast } from "three-mesh-bvh";
 // BVH-accelerated picking: rays test a few dozen triangles instead of every triangle in a room.
 T.BufferGeometry.prototype.computeBoundsTree=computeBoundsTree;T.Mesh.prototype.raycast=acceleratedRaycast;
@@ -34,8 +35,8 @@ export interface WorldCallbacks {
  /** While seated at a screen: its rectangle in page pixels, or null once you stand up. */
  /** Movement and hover cues for sound: jumps, landings, and pointing at something you can use. */
  cue?:(kind:"jump"|"land"|"hover",at:T.Vector3)=>void;
- /** Path-traced photo mode: accumulated samples, or 0 when the rasteriser is drawing. */
- rtx?:(samples:number)=>void;
+ /** You opened or closed a door (shared with friends in the room). */
+ door?:(id:string,open:boolean)=>void;
  screen?:(seat:{id:"computer"|"laptop";x:number;y:number;w:number;h:number}|null)=>void;
 }
 // Per-weather light: window key colour and strength, sky fill, and the world beyond the glass.
@@ -89,27 +90,36 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  const self=makePerson({skin:"#b9825c",top:"#2f4f43",bottom:"#2d3a6b",hair:"#1f1a17"});self.root.updateMatrixWorld(true);
  {const at=new T.Vector3();self.root.traverse(o=>{if(o instanceof T.Mesh&&o.getWorldPosition(at).y>1.4)o.visible=false;});}
  self.root.visible=false;scene.add(self.root);let gait=0;
+ // Friends in the room (net.ts): each one is an articulated person easing toward their latest pose, walking at
+ // the speed they really walk, with a name tag that lights up green while they talk.
+ type Remote={person:ReturnType<typeof makePerson>;tag:T.Sprite;canvas:HTMLCanvasElement;texture:T.CanvasTexture;name:string;color:string;talking:boolean;goal:PlayerState|null;gait:number;placed:boolean};
+ const remotes=new Map<string,Remote>(),skins=["#8d5a3b","#b9825c","#c99a76","#6f4630","#d8ab84"];
+ function drawTag(r:Remote){const g=r.canvas.getContext("2d")!;g.clearRect(0,0,512,128);g.fillStyle="rgba(31,26,23,.72)";g.beginPath();g.roundRect(8,24,496,80,40);g.fill();
+  g.fillStyle=r.talking?"#8fd19e":r.color;g.beginPath();g.arc(62,64,r.talking?20:15,0,Math.PI*2);g.fill();if(r.talking){g.strokeStyle="#8fd19e88";g.lineWidth=6;g.beginPath();g.arc(62,64,30,0,Math.PI*2);g.stroke();}
+  g.fillStyle="#f1eadb";g.font="600 44px system-ui, sans-serif";g.textBaseline="middle";g.fillText(r.name.slice(0,16),104,66);r.texture.needsUpdate=true;}
+ function makeRemote(id:string,name:string,color:string):Remote{
+  let hash=0;for(const ch of id)hash=(hash*31+ch.charCodeAt(0))|0;
+  const person=makePerson({skin:skins[Math.abs(hash)%skins.length],top:color,bottom:"#2d3a6b",hair:"#1f1a17",longHair:Math.abs(hash)%3===0});person.root.visible=false;scene.add(person.root);
+  const canvas=document.createElement("canvas");canvas.width=512;canvas.height=128;const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;
+  const tag=new T.Sprite(new T.SpriteMaterial({map:texture,transparent:true,depthWrite:false}));tag.scale.set(.72,.18,1);tag.position.y=2.02;person.root.add(tag);
+  const r:Remote={person,tag,canvas,texture,name,color,talking:false,goal:null,gait:0,placed:false};drawTag(r);return r;}
+ function dropRemote(id:string){const r=remotes.get(id);if(!r)return;remotes.delete(id);scene.remove(r.person.root);r.person.root.traverse(o=>{if(o instanceof T.Mesh)o.geometry.dispose();});r.texture.dispose();(r.tag.material as T.SpriteMaterial).dispose();}
+ function updateRemotes(dt:number){const k=1-Math.exp(-dt*12);for(const r of remotes.values()){const g=r.goal;if(!g)continue;const root=r.person.root;
+  if(!r.placed){r.placed=true;root.position.set(g.x,g.y,g.z);root.rotation.y=g.yaw+Math.PI;}
+  root.position.x+=(g.x-root.position.x)*k;root.position.y+=(g.y-root.position.y)*k;root.position.z+=(g.z-root.position.z)*k;
+  const turn=Math.atan2(Math.sin(g.yaw+Math.PI-root.rotation.y),Math.cos(g.yaw+Math.PI-root.rotation.y));root.rotation.y+=turn*k;
+  r.gait+=dt*g.speed*3.4;stride(r.person,r.gait,options.motion?Math.min(1.6,g.speed/2.35):0);if(!g.grounded&&options.motion){for(const kn of r.person.knees)kn.rotation.x=.75;for(const h of r.person.hips)h.rotation.x=-.5;}
+  r.person.head.rotation.x=-g.pitch*.5;
+  // Standing where you stand (everyone arrives at the same spot): hidden until they step out of your eyes.
+  r.person.root.visible=Math.hypot(root.position.x-camera.position.x,root.position.z-camera.position.z)>.55;}}
  // Doorways for the sound engine: where each opening is, refreshed with how open the door is.
  const doorSounds:DoorSound[]=building.doors.map(d=>{const c=d.portal.getCenter(new T.Vector3());return {rooms:d.rooms,open:0,x:c.x,y:c.y,z:c.z};});
  // Seated mode: the camera eases from the walker into a chair and squares up to a screen.
  type Seat=NonNullable<Area["seats"]>[number];let seat:Seat|null=null,leaving:Seat|null=null,seatBlend=0,lastRect="";
  const seatPos=new T.Vector3(),seatLook=new T.Vector3(),walkPos=new T.Vector3(),walkQuat=new T.Quaternion(),seatQuat=new T.Quaternion(),lookMatrix=new T.Matrix4(),corner=new T.Vector3();
- // Ray-traced photo mode while the camera is still (see raytrace.ts).
- let rt:import("./raytrace").Raytracer|null=null,rtLoading=false,tracing=false,lastSamples=-1;const rtTop=new T.Color(),rtBottom=new T.Color();
  // Right mouse held: a smooth zoom, with look speed scaled down to match.
  let zoomHeld=false,baseFov=68;
  function context(e:Event){e.preventDefault();}
- function stillness(now:number){return !player.active&&!seat&&seatBlend===0&&now-pointerMoved>1400&&!player.settling&&building.doors.every(d=>Math.abs(d.angle-d.target)<.002);}
- function trace(now:number){
-  if(!options.rtx||!postWanted()||!stillness(now)){if(tracing){tracing=false;}return false;}
-  if(!rt){if(!rtLoading){rtLoading=true;import("./raytrace").then(m=>m.createRaytracer(renderer,scene,camera,raster)).then(r=>{if(destroyed){r.dispose();return;}rt=r;lastRender=0;}).catch(error=>{console.warn("Ray tracing unavailable",error);options.rtx=false;});}return false;}
-  const hidden=[outdoors?.root,heavens?.root,...Array.from(areas.entries()).filter(([id])=>id!==areaId).map(([,a])=>a.root)].filter(Boolean) as T.Object3D[];
-  const key=`${areaId}|${options.weather}|${options.lamp}|${Array.from(areas.keys()).join()}`;
-  rtTop.set(climate[options.weather].fillSky);rtBottom.set(climate[options.weather].ground);void rt.prepare(key,hidden,rtTop,rtBottom);
-  if(!rt.ready)return false;
-  if(!tracing){tracing=true;rt.reset();}
-  return rt.render();
- }
  let bakeSoon=0,bakedWeather="";
  function bakeReflections(){const shown=[outdoors?.root,heavens?.root].filter(Boolean) as T.Object3D[],was=shown.map(o=>o.visible),body=self.root.visible;shown.forEach(o=>{o.visible=true;});self.root.visible=false;scene.updateMatrixWorld();for(const area of areas.values())area.bake?.(renderer,scene);shown.forEach((o,i)=>{o.visible=was[i];});self.root.visible=body;}
  function raster(){const effects=ensurePost();if(effects)effects.render(elapsed,options.motion);else renderer.render(scene,camera);}
@@ -223,7 +233,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
     const door=building.doors.find(d=>d.id===action.slice(5));if(!door||door.locked)return;
     const opposite=door.id==="bedroom-archive"?"bedroom":door.id==="archive-workshop"?"archive":door.id==="archive-library"?"archive":"library";
     await load(door.destination);if(opposite!=="bedroom")await load(opposite);
-    if(!areas.has(door.destination))return;building.toggle(door.id);callbacks.action(action,point.clone());return;
+    if(!areas.has(door.destination))return;building.toggle(door.id);callbacks.door?.(door.id,Math.abs(door.target)>.3);callbacks.action(action,point.clone());return;
   }
   for(const area of areas.values()){if(isDescendant(object,area.root)){area.interact?.(action);break;}}
   if(["projects","skills","about","experience","contact","lab","telescope","profile","secret"].includes(action)||action.startsWith("project:")||action.startsWith("skill:"))pause();
@@ -279,7 +289,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  function frame(now:number){
   if(destroyed)return;if(benchOn)pointerMoved=now;
   const fovGoal=zoomHeld?baseFov*.4:baseFov;
-  const lively=Math.abs(camera.fov-fovGoal)>.05||player.active||now-pointerMoved<1600||player.settling||(seat?seatBlend<.999:seatBlend>0)||tracing;
+  const lively=Math.abs(camera.fov-fovGoal)>.05||player.active||now-pointerMoved<1600||player.settling||(seat?seatBlend<.999:seatBlend>0);
   // Moving: render every display refresh (a fixed 60 fps cap drops frames whenever vsync timing jitters).
   // Idle: 30 fps, or 4 fps with motion off, with slack so jitter never skips a frame.
   const interval=lively?0:options.motion?1000/30:250;if(now-lastRender<interval-2)return;if(!lively)lastFrameAt=0;
@@ -287,6 +297,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   const wasGrounded=player.grounded,fallSpeed=player.velocity.y;
   if(secretCloseAt&&now>secretCloseAt)closeSecret(now);
   building.update(dt,player.capsule,options.motion);player.update(dt,options.motion);
+  updateRemotes(dt);
   const speed=Math.hypot(player.velocity.x,player.velocity.z);self.root.visible=player.active&&!seat&&seatBlend===0;
   if(self.root.visible){gait+=dt*speed*3.4;stride(self,gait,options.motion?Math.min(1.6,speed/2.35):0);if(!player.grounded&&options.motion){for(const k of self.knees)k.rotation.x=.75;for(const h of self.hips)h.rotation.x=-.5;}
    self.root.position.set(player.capsule.start.x+Math.sin(player.yaw)*.16,player.capsule.start.y-.24,player.capsule.start.z+Math.cos(player.yaw)*.16);self.root.rotation.y=player.yaw+Math.PI;}
@@ -299,7 +310,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   if(using&&seatBlend>0){scene.updateMatrixWorld();using.eye.getWorldPosition(seatPos);using.screen.getWorldPosition(seatLook);lookMatrix.lookAt(seatPos,seatLook,camera.up);seatQuat.setFromRotationMatrix(lookMatrix);walkPos.copy(camera.position);walkQuat.copy(camera.quaternion);const e=seatBlend*seatBlend*(3-2*seatBlend);camera.position.lerpVectors(walkPos,seatPos,e);camera.quaternion.slerpQuaternions(walkQuat,seatQuat,e);}
   camera.updateMatrixWorld();
   // Visibility first; then only rooms you can see animate and draw (plus any mid-move, like the shelf closing behind you).
-  cull();frameOptions.motion=options.motion;frameOptions.weather=options.weather;frameOptions.lamp=options.lamp;frameOptions.fan=options.fan;frameOptions.quality=low?"low":options.quality;
+  cull();frameOptions.motion=options.motion;frameOptions.weather=options.weather;frameOptions.lamp=options.lamp;frameOptions.fan=options.fan;frameOptions.music=options.music;frameOptions.quality=low?"low":options.quality;
   for(const [room,area] of areas){const shown=visibleRooms.has(room);area.root.visible=shown;if(shown||area.busy?.())area.update?.(elapsed,dt,frameOptions);}
   if(outdoors)outdoors.root.visible=outsideVisible;if(heavens)heavens.root.visible=outsideVisible;
   scene.updateMatrixWorld();follow();
@@ -329,17 +340,16 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
    for(const l of shadowLights)l.shadow.needsUpdate=visibleRooms.has(locationAt(l.matrixWorld.elements[12],l.matrixWorld.elements[14]));
   }
   if(options.weather!==bakedWeather){bakedWeather=options.weather;bakeSoon=now+2200;}if(bakeSoon&&now>bakeSoon){bakeSoon=0;bakeReflections();}
-  const traced=trace(now);const raw=traced&&rt?(rt.busy?-1:Math.floor(rt.samples)):options.rtx&&rt?.busy?-1:0,samples=raw<16?raw:raw-raw%16;if(samples!==lastSamples){lastSamples=samples;callbacks.rtx?.(samples);}
-  const effects=traced?null:ensurePost();if(!traced){skipBehindWalls();raster();restoreSkipped();}
+  const effects=ensurePost();skipBehindWalls();raster();restoreSkipped();
   if(benchOn){const cpu=performance.now()-start;renderer.getContext().finish();bench.frames++;bench.cpu+=cpu;bench.full+=performance.now()-start;bench.calls+=renderer.info.render.calls;bench.tris+=renderer.info.render.triangles;}
-  if(now-lastStats>250){lastStats=now;canvas.dataset.location=id;canvas.dataset.weather=options.weather;canvas.dataset.samples=String(raw);canvas.dataset.quality=effects?(aoOff?"medium":"high"):"low";canvas.dataset.position=[camera.position.x,camera.position.y,camera.position.z].map(n=>n.toFixed(3)).join(",");canvas.dataset.rotation=[player.yaw,player.pitch].map(n=>n.toFixed(3)).join(",");canvas.dataset.grounded=String(player.grounded);canvas.dataset.target=selected?.userData.action??"";canvas.dataset.active=String(player.active);canvas.dataset.mode=mode;canvas.dataset.doors=building.doors.map(d=>`${d.id}:${d.angle.toFixed(2)}`).join(",");canvas.dataset.drawer=String(bedroom.root.userData.drawerZ??0);canvas.dataset.calls=String(renderer.info.render.calls);canvas.dataset.triangles=String(renderer.info.render.triangles);canvas.dataset.geometries=String(renderer.info.memory.geometries);canvas.dataset.textures=String(renderer.info.memory.textures);canvas.dataset.loaded=Array.from(areas.keys()).join(",");}
+  if(now-lastStats>250){lastStats=now;canvas.dataset.location=id;canvas.dataset.weather=options.weather;canvas.dataset.quality=effects?(aoOff?"medium":"high"):"low";canvas.dataset.position=[camera.position.x,camera.position.y,camera.position.z].map(n=>n.toFixed(3)).join(",");canvas.dataset.rotation=[player.yaw,player.pitch].map(n=>n.toFixed(3)).join(",");canvas.dataset.grounded=String(player.grounded);canvas.dataset.target=selected?.userData.action??"";canvas.dataset.active=String(player.active);canvas.dataset.mode=mode;canvas.dataset.doors=building.doors.map(d=>`${d.id}:${d.angle.toFixed(2)}`).join(",");canvas.dataset.drawer=String(bedroom.root.userData.drawerZ??0);canvas.dataset.calls=String(renderer.info.render.calls);canvas.dataset.triangles=String(renderer.info.render.triangles);canvas.dataset.geometries=String(renderer.info.memory.geometries);canvas.dataset.textures=String(renderer.info.memory.textures);canvas.dataset.loaded=Array.from(areas.keys()).join(",");}
   // Adaptive quality: drop ambient occlusion first, then the whole post stack, before frames suffer.
-  if(traced||rt?.busy)slow=0;else if(performance.now()-start>(lively?24:40))slow++;else slow=Math.max(0,slow-1);
+  if(performance.now()-start>(lively?24:40))slow++;else slow=Math.max(0,slow-1);
   if(slow>30&&post&&!aoOff){aoOff=true;post.ao.enabled=false;slow=0;}
   else if(slow>40&&!low&&renderScale<=.56){low=true;post?.dispose();post=null;renderer.setPixelRatio(ratio());}
   // Dynamic resolution: under ~50 fps the internal resolution steps down 10%; after a stretch of steady
   // headroom it steps back up (waiting longer each time it had to come down again, so it never oscillates).
-  if(lively&&!traced){if(lastFrameAt)frameEMA+=((now-lastFrameAt)-frameEMA)*.08;lastFrameAt=now;
+  if(lively){if(lastFrameAt)frameEMA+=((now-lastFrameAt)-frameEMA)*.08;lastFrameAt=now;
    if(frameEMA>20){struggle++;comfort=0;}else if(frameEMA<17.6){comfort++;struggle=Math.max(0,struggle-2);}else struggle=Math.max(0,struggle-1);
    if(struggle>45&&renderScale>.55){renderScale=Math.max(.55,Math.round(renderScale*10-1)/10);struggle=0;if(steppedUp)comfortNeed=Math.min(comfortNeed*2,3600);steppedUp=false;renderer.setPixelRatio(ratio());sizePost();}
    else if(comfort>comfortNeed&&renderScale<1){renderScale=Math.min(1,Math.round(renderScale*10+1)/10);comfort=0;steppedUp=true;renderer.setPixelRatio(ratio());sizePost();}}
@@ -375,18 +385,29 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   // Warm-up frame: draw everything once with culling off (shadow maps, ambient occlusion, bloom, reflections),
   // so the variants only a real frame creates are compiled here, not on your first step.
   callbacks.progress?.(.99,"Warming up the renderer");await breathe();if(destroyed)return;
+  const warmTag=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(document.createElement("canvas")),transparent:true,depthWrite:false}));scene.add(warmTag);
   const culled:T.Object3D[]=[];scene.traverse(o=>{if(o.frustumCulled){o.frustumCulled=false;culled.push(o);}});
   renderer.shadowMap.needsUpdate=true;for(const l of shadowLights)l.shadow.needsUpdate=true;
-  try{raster();bakeReflections();}catch(error){console.warn(error);}finally{for(const o of culled)o.frustumCulled=true;}
+  try{raster();bakeReflections();}catch(error){console.warn(error);}finally{for(const o of culled)o.frustumCulled=true;scene.remove(warmTag);warmTag.material.map?.dispose();warmTag.material.dispose();}
   if(destroyed)return;renderer.shadowMap.needsUpdate=true;bakeSoon=performance.now()+300;callbacks.progress?.(1,"Ready");callbacks.ready();renderer.setAnimationLoop(frame);
  })();
  return {enter,pause,interact,sit,stand,setStick(x:number,y:number){player.stick.set(x,y);},
  /** A member signed in: the bookshelf opens and the hidden door can be used. Returns where it happens, for sound. */
  unlock(){return openSecret(false);},
- // Development aid for visual QA: jump to a spot, loading whatever rooms are near it.
+ /** Where you are, for friends in the room. */
+ localState():PlayerState{const c=player.capsule.start;return {x:c.x,y:c.y-.24,z:c.z,yaw:player.yaw,pitch:player.pitch,speed:Math.hypot(player.velocity.x,player.velocity.z),grounded:player.grounded,room:areaId};},
+ /** Add or refresh a friend: name, shirt colour, and whether they are talking. */
+ friend(id:string,name:string,color:string,talking:boolean){let r=remotes.get(id);if(r&&r.color!==color){dropRemote(id);r=undefined;}if(!r){r=makeRemote(id,name,color);remotes.set(id,r);}if(r.name!==name||r.talking!==talking){r.name=name;r.talking=talking;drawTag(r);}lastRender=0;},
+ /** A song is playing on the record player (the platter turns). Cheap: no renderer changes. */
+ setMusic(on:boolean){options.music=on;},
+ moveFriend(id:string,state:PlayerState){const r=remotes.get(id);if(r)r.goal=state;},
+ dropFriend(id:string){dropRemote(id);},
+ /** A friend opened or closed a door. */
+ setDoor(id:string,open:boolean){const door=building.doors.find(d=>d.id===id);if(door&&(Math.abs(door.target)>.3)!==open)building.toggle(id);lastRender=0;},
  debugScene(){return scene;},debugRenderer(){return renderer;},benchmark(on:boolean){if(on){benchOn=true;Object.assign(bench,{frames:0,cpu:0,full:0,calls:0,tris:0});return null;}benchOn=false;const n=Math.max(1,bench.frames);return {frames:bench.frames,cpuMs:+(bench.cpu/n).toFixed(2),frameMs:+(bench.full/n).toFixed(2),calls:Math.round(bench.calls/n),tris:Math.round(bench.tris/n)};},
- async teleport(x:number,z:number,yaw:number,pitch=-.05){for(const id of Object.keys(rooms) as Location[])if(Math.hypot(rooms[id].center[0]-x,rooms[id].center[1]-z)<9)await load(id);for(const door of building.doors)if(!door.locked)door.target=Math.PI*.53*door.swing;player.place(x,z,yaw,pitch);lastRender=0;},setOptions(next:WorldOptions){options={...next};tracing=false;baseFov=(options.fov??68)+(camera.aspect<.8?10:0);if(post){post.ao.enabled=options.ao!==false&&!aoOff;post.bloom.enabled=options.bloom!==false;post.grain(options.grain!==false);}if(outdoors)outdoors.setLife(options.life!==false);if(!postWanted()&&post){post.dispose();post=null;}renderer.setPixelRatio(ratio());sizePost();lastRender=0;},
- dispose(){destroyed=true;pause();renderer.setAnimationLoop(null);resize.disconnect();document.removeEventListener("pointerlockchange",lockChange);document.removeEventListener("keydown",keyDown);document.removeEventListener("keyup",keyUp);document.removeEventListener("visibilitychange",visibility);window.removeEventListener("blur",blurred);canvas.removeEventListener("pointerdown",down);canvas.removeEventListener("pointermove",move);canvas.removeEventListener("pointerup",up);canvas.removeEventListener("pointercancel",up);canvas.removeEventListener("pointerleave",leave);canvas.removeEventListener("click",click);canvas.removeEventListener("webglcontextlost",lost);canvas.removeEventListener("contextmenu",context);document.removeEventListener("mouseup",mouseUp);for(const area of areas.values())area.dispose?.();post?.dispose();rt?.dispose();scene.environment?.dispose();disposeObject(scene);light.shadow.dispose();renderer.dispose();renderer.forceContextLoss();canvas.remove();}
+ // Development aid for visual QA: jump to a spot, loading whatever rooms are near it.
+ async teleport(x:number,z:number,yaw:number,pitch=-.05){for(const id of Object.keys(rooms) as Location[])if(Math.hypot(rooms[id].center[0]-x,rooms[id].center[1]-z)<9)await load(id);for(const door of building.doors)if(!door.locked)door.target=Math.PI*.53*door.swing;player.place(x,z,yaw,pitch);lastRender=0;},setOptions(next:WorldOptions){options={...next};baseFov=(options.fov??68)+(camera.aspect<.8?10:0);if(post){post.ao.enabled=options.ao!==false&&!aoOff;post.bloom.enabled=options.bloom!==false;post.grain(options.grain!==false);}if(outdoors)outdoors.setLife(options.life!==false);if(!postWanted()&&post){post.dispose();post=null;}renderer.setPixelRatio(ratio());sizePost();lastRender=0;},
+ dispose(){destroyed=true;pause();renderer.setAnimationLoop(null);resize.disconnect();document.removeEventListener("pointerlockchange",lockChange);document.removeEventListener("keydown",keyDown);document.removeEventListener("keyup",keyUp);document.removeEventListener("visibilitychange",visibility);window.removeEventListener("blur",blurred);canvas.removeEventListener("pointerdown",down);canvas.removeEventListener("pointermove",move);canvas.removeEventListener("pointerup",up);canvas.removeEventListener("pointercancel",up);canvas.removeEventListener("pointerleave",leave);canvas.removeEventListener("click",click);canvas.removeEventListener("webglcontextlost",lost);canvas.removeEventListener("contextmenu",context);document.removeEventListener("mouseup",mouseUp);for(const area of areas.values())area.dispose?.();for(const id of Array.from(remotes.keys()))dropRemote(id);post?.dispose();scene.environment?.dispose();disposeObject(scene);light.shadow.dispose();renderer.dispose();renderer.forceContextLoss();canvas.remove();}
  };
 }
 export type WorldEngine=ReturnType<typeof createWorld>;

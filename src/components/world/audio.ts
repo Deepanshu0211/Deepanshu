@@ -13,6 +13,9 @@ type Surface = "wood" | "tile";
 type Room = Location | "outside";
 type Spot = { at: Point; room: Room; panner: PannerNode; filter: BiquadFilterNode; level: GainNode };
 type Reach = { trans: number; cutoff: number; via?: Point };
+type Track = { title: string; src: string };
+type Repeat = "all" | "one" | "off";
+export type SongState = { title: string; index: number; count: number; playing: boolean; time: number; duration: number; shuffle: boolean; repeat: Repeat; spatial: boolean; volume: number };
 const surfaceOf: Record<Location, Surface> = { bedroom: "wood", archive: "wood", library: "wood", workshop: "tile", rooftop: "tile", vault: "wood" };
 /** Reverb by room: decay (s), wet level, brightness (0 dark … 1 bright), and early reflections (ms) from the nearest walls. */
 const acoustics: Record<Location, { decay: number; wet: number; bright: number; early: number[] }> = {
@@ -72,7 +75,7 @@ export class RoomAudio {
     }
     return from;
   }
-  private propagate() { if (!this.ctx) return; const from = this.paths(); for (const s of this.spots) this.place(s, from); }
+  private propagate() { if (!this.ctx) return; const from = this.paths(); for (const s of this.spots) { s.room = roomOf(s.at); this.place(s, from); } }
   /** Muffle and quieten a source by its path, and hear it from the doorway when it comes round a corner. */
   private place(s: Spot, from = roomOf(this.here), immediate = false) {
     const t = this.ctx!.currentTime, tau = immediate ? 0 : .12, r = this.reach.get(s.room) ?? { trans: .03, cutoff: 220 }; let x = s.at.x, y = s.at.y, z = s.at.z;
@@ -148,29 +151,81 @@ export class RoomAudio {
     this.footstep(at, surfaceOf[this.location]); this.later(40, () => this.footstep(at, surfaceOf[this.location]));
   }
   // ── your music folder, played from the record player ─────────────────────────
-  private song: { el: HTMLAudioElement; gain: GainNode; tracks: { title: string; src: string }[]; index: number } | null = null;
-  private songListeners = new Set<(state: { title: string; index: number; count: number; playing: boolean } | null) => void>();
+  // In the room, songs come from the record player (louder close, muffled through walls); "in my headphones"
+  // follows you instead. Tracks fade into each other, the music dips while a friend is talking, and the OS
+  // media keys and lock screen work through the Media Session API.
+  private song: { el: HTMLAudioElement; fade: GainNode; duck: GainNode; room: GainNode; ears: GainNode; analyser: AnalyserNode; tracks: Track[]; index: number } | null = null;
+  private songListeners = new Set<(state: SongState | null) => void>(); private songOptions = { shuffle: false, repeat: "all" as Repeat, spatial: true, volume: .9 };
   /** Follow what the record player is playing; returns an unsubscribe function. */
-  subscribeSong(fn: (state: { title: string; index: number; count: number; playing: boolean } | null) => void) { this.songListeners.add(fn); return () => { this.songListeners.delete(fn); }; }
-  /** Play public/music tracks from a point in the room (louder close, fainter far). */
-  async playFolder(tracks: { title: string; src: string }[], at: Point, index = 0) {
+  subscribeSong(fn: (state: SongState | null) => void) { this.songListeners.add(fn); return () => { this.songListeners.delete(fn); }; }
+  /** Play public/music tracks from a point in the room. */
+  async playFolder(tracks: Track[], at: Point, index = 0) {
     if (!tracks.length) return false; if (!this.ctx) this.build(); if (!this.enabled) await this.toggle(); await this.ctx!.resume();
     if (!this.song) {
-      const el = new Audio(); el.preload = "auto"; const gain = this.ctx!.createGain(); gain.gain.value = .9;
-      this.ctx!.createMediaElementSource(el).connect(gain).connect(this.panner(at, 1.4, 1.5)).connect(this.indoor);
-      el.addEventListener("ended", () => this.skip(1)); el.addEventListener("play", () => this.report()); el.addEventListener("pause", () => this.report());
-      this.song = { el, gain, tracks, index };
+      const ctx = this.ctx!, el = new Audio(); el.preload = "auto"; el.crossOrigin = "anonymous";
+      const fade = ctx.createGain(), duck = ctx.createGain(), room = ctx.createGain(), ears = ctx.createGain(), analyser = ctx.createAnalyser(); analyser.fftSize = 256; analyser.smoothingTimeConstant = .78;
+      ctx.createMediaElementSource(el).connect(fade).connect(duck); duck.connect(analyser);
+      duck.connect(room).connect(this.panner(at, 1.4, 1.5)).connect(this.indoor); duck.connect(ears).connect(this.master);
+      el.addEventListener("ended", () => this.next(true)); for (const e of ["play", "pause", "loadedmetadata", "timeupdate"]) el.addEventListener(e, () => this.report());
+      this.song = { el, fade, duck, room, ears, analyser, tracks, index }; this.applySongOptions(); this.mediaKeys();
     }
     this.song.tracks = tracks; this.load(index); return true;
   }
-  private load(index: number) { const s = this.song!; s.index = (index + s.tracks.length) % s.tracks.length; s.el.src = s.tracks[s.index].src; void s.el.play().catch(() => this.report()); this.report(); }
-  skip(step: number) { if (this.song) this.load(this.song.index + step); }
+  private load(index: number) {
+    const s = this.song!, ctx = this.ctx!, t = ctx.currentTime, swap = () => { s.index = (index + s.tracks.length) % s.tracks.length; s.el.src = s.tracks[s.index].src; void s.el.play().catch(() => this.report()); s.fade.gain.setTargetAtTime(1, ctx.currentTime, .08); this.report(); };
+    if (!s.el.paused && s.el.src) { s.fade.gain.setTargetAtTime(0, t, .06); this.later(220, swap); } else { s.fade.gain.value = 1; swap(); }
+  }
+  /** Next track by the play mode; `auto` is the end of a song (repeat-one replays, repeat-off stops at the end). */
+  private next(auto = false) {
+    const s = this.song; if (!s) return; const { shuffle, repeat } = this.songOptions;
+    if (auto && repeat === "one") { s.el.currentTime = 0; void s.el.play(); return; }
+    if (auto && repeat === "off" && !shuffle && s.index === s.tracks.length - 1) { this.report(); return; }
+    this.load(shuffle && s.tracks.length > 1 ? (s.index + 1 + Math.floor(Math.random() * (s.tracks.length - 1))) % s.tracks.length : s.index + 1);
+  }
+  skip(step: number) { if (!this.song) return; if (step > 0) this.next(); else if (this.song.el.currentTime > 4) this.song.el.currentTime = 0; else this.load(this.song.index - 1); }
   pauseSong() { const s = this.song; if (!s) return; if (s.el.paused) void s.el.play(); else s.el.pause(); }
   stopSong() { const s = this.song; if (!s) return; s.el.pause(); this.songListeners.forEach(fn => fn(null)); }
-  private report() { const s = this.song; if (!s) return; const state = { title: s.tracks[s.index].title, index: s.index, count: s.tracks.length, playing: !s.el.paused }; this.songListeners.forEach(fn => fn(state)); }
+  seek(seconds: number) { const s = this.song; if (s && Number.isFinite(s.el.duration)) s.el.currentTime = Math.max(0, Math.min(s.el.duration - .1, seconds)); }
+  setSong(o: Partial<typeof this.songOptions>) { Object.assign(this.songOptions, o); this.applySongOptions(); this.report(); }
+  private applySongOptions() { const s = this.song; if (!s) return; const t = this.ctx!.currentTime, o = this.songOptions; s.room.gain.setTargetAtTime(o.spatial ? o.volume : 0, t, .15); s.ears.gain.setTargetAtTime(o.spatial ? 0 : o.volume * .55, t, .15); }
+  /** The record player's spectrum (0–255 per band), for the visualiser. */
+  spectrum(out: Uint8Array<ArrayBuffer>) { if (this.song && !this.song.el.paused) this.song.analyser.getByteFrequencyData(out); else out.fill(0); }
+  private mediaKeys() {
+    const session = navigator.mediaSession; if (!session) return;
+    const on = (action: MediaSessionAction, fn: (d: MediaSessionActionDetails) => void) => { try { session.setActionHandler(action, fn); } catch { /* unsupported action */ } };
+    on("play", () => void this.song?.el.play()); on("pause", () => this.song?.el.pause()); on("nexttrack", () => this.skip(1)); on("previoustrack", () => this.skip(-1)); on("seekto", d => { if (d.seekTime !== undefined) this.seek(d.seekTime); });
+  }
+  private report() {
+    const s = this.song; if (!s) return; const o = this.songOptions;
+    const state: SongState = { title: s.tracks[s.index].title, index: s.index, count: s.tracks.length, playing: !s.el.paused, time: s.el.currentTime || 0, duration: Number.isFinite(s.el.duration) ? s.el.duration : 0, ...o };
+    if (navigator.mediaSession) { if (navigator.mediaSession.metadata?.title !== state.title) navigator.mediaSession.metadata = new MediaMetadata({ title: state.title, artist: "Deepanshu’s record player", album: "The study" }); navigator.mediaSession.playbackState = state.playing ? "playing" : "paused"; }
+    this.songListeners.forEach(fn => fn(state));
+  }
+  // ── friends' voices (net.ts): each one placed at their head, heard through doors and muffled by walls ─────────
+  private voices = new Map<string, { at: Point; el: HTMLAudioElement; source: MediaStreamAudioSourceNode; out: GainNode; panner: PannerNode; analyser: AnalyserNode; buf: Uint8Array<ArrayBuffer> }>();
+  private mic: { source: MediaStreamAudioSourceNode; analyser: AnalyserNode; buf: Uint8Array<ArrayBuffer> } | null = null;
+  async voice(id: string, stream: MediaStream, at: Point) {
+    if (!this.ctx) this.build(); if (!this.enabled) await this.toggle(); await this.ctx!.resume(); this.dropVoice(id);
+    // Chrome only feeds a remote WebRTC stream into Web Audio while a media element is also playing it (muted).
+    const ctx = this.ctx!, el = new Audio(); el.srcObject = stream; el.muted = true; void el.play().catch(() => undefined);
+    const source = ctx.createMediaStreamSource(stream), out = ctx.createGain(), analyser = ctx.createAnalyser(); out.gain.value = 1.6; analyser.fftSize = 512;
+    const spot = { ...at }, panner = this.panner(spot, 1.1, 1.25); source.connect(analyser); source.connect(out).connect(panner).connect(this.indoor);
+    this.voices.set(id, { at: spot, el, source, out, panner, analyser, buf: new Uint8Array(analyser.fftSize) });
+  }
+  moveVoice(id: string, x: number, y: number, z: number) { const v = this.voices.get(id); if (v) { v.at.x = x; v.at.y = y; v.at.z = z; } }
+  dropVoice(id: string) { const v = this.voices.get(id); if (!v) return; this.voices.delete(id); v.source.disconnect(); v.out.disconnect(); v.panner.disconnect(); v.analyser.disconnect(); v.el.srcObject = null; }
+  /** Your own microphone, measured (never played back) so the room can show when you talk. */
+  setMic(stream: MediaStream | null) { this.mic?.source.disconnect(); this.mic = null; if (!stream || !this.ctx) return; const source = this.ctx.createMediaStreamSource(stream), analyser = this.ctx.createAnalyser(); analyser.fftSize = 512; source.connect(analyser); this.mic = { source, analyser, buf: new Uint8Array(analyser.fftSize) }; }
+  /** Speaking levels (0..1): yours and each friend's. While a friend talks the music steps back. */
+  levels() {
+    const rms = (a: AnalyserNode, buf: Uint8Array<ArrayBuffer>) => { a.getByteTimeDomainData(buf); let sum = 0; for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; } return Math.min(1, Math.sqrt(sum / buf.length) * 4); };
+    const friends = new Map<string, number>(); let loudest = 0; for (const [id, v] of this.voices) { const l = rms(v.analyser, v.buf); friends.set(id, l); loudest = Math.max(loudest, l); }
+    if (this.song && this.ctx) this.song.duck.gain.setTargetAtTime(loudest > .06 ? .45 : 1, this.ctx.currentTime, loudest > .06 ? .08 : .6);
+    return { me: this.mic ? rms(this.mic.analyser, this.mic.buf) : 0, friends };
+  }
   private near(): Point { const l = this.ctx!.listener; return { x: l.positionX.value, y: l.positionY.value, z: l.positionZ.value + .3 }; }
   visibility() { if (!this.ctx) return; if (document.hidden) void this.ctx.suspend(); else if (this.enabled) void this.ctx.resume(); }
-  dispose() { this.song?.el.pause(); this.timers.forEach(t => clearTimeout(t)); if (this.radio) clearInterval(this.radio.timer); void this.ctx?.close(); }
+  dispose() { this.song?.el.pause(); for (const id of Array.from(this.voices.keys())) this.dropVoice(id); this.setMic(null); this.timers.forEach(t => clearTimeout(t)); if (this.radio) clearInterval(this.radio.timer); void this.ctx?.close(); }
 
   // ── construction ─────────────────────────────────────────────────────────────
   private build() {

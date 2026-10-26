@@ -15,7 +15,7 @@ function earth() {
 }
 
 export function createStudy(): Area {
-  const root = new T.Group(); let alive = true, playing = false, open = 0, opening = 0;
+  const root = new T.Group(); let alive = true, open = 0, opening = 0;
   const walnut = finishes.walnut(), oak = finishes.oak();
   rug(root, [0, 0, -.2], [2.8, 3.4], "#d9c9b0");
   // Built-in library wall. Two eye-level shelves hold the skills, labelled on their spines. The middle two bays are
@@ -132,11 +132,12 @@ export function createStudy(): Area {
   return {
     root, camera: [0, 1.65, 0], target: [0, 1, 0], anchors: [], seats: [{ id: "laptop", eye: place(root, [.05, 1.17, 2.32]), screen }],
     movers: leaves.map((hinge, i) => ({ hinge, size: [1.43, 2.6, .38], center: [(i ? -1 : 1) * .725, 1.3, -.19] })),
-    interact(action) { if (action === "record") playing = !playing; if (action === "globe") spin = 6; },
+    interact(action) { if (action === "globe") spin = 6; },
     reveal() { opening = 1; },
     conceal() { opening = 0; },
     busy: () => open !== opening,
     update(time, delta, options) {
+      const playing = options.music === true; // the platter turns while a song really plays
       if (options.motion) { if (playing) platter.rotation.y -= delta * 3.5; spin = Math.max(0, spin - delta * 2); world.rotation.y += delta * (.12 + spin); }
       arm.rotation.y = playing ? -.25 : 0;
       // The panels ease out of the wall, then slide apart along it, each coming to rest in front of its outer bay;
