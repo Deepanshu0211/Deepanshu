@@ -1,5 +1,6 @@
 "use client";
-import {useEffect,useRef,useState} from "react";
+import {useCallback,useEffect,useRef,useState} from "react";
+import {RECORD_PLAYER} from "./MusicPlayer";
 import type {WorldEngine} from "./world/engine";
 import {GESTURES,type Gesture} from "./world/gestures";
 import type {RoomAudio} from "./world/audio";
@@ -16,6 +17,10 @@ export const netBus=new EventTarget();
 // peer to peer (world/net.ts); voices come out of each friend's avatar, muffled by walls (world/audio.ts).
 export default function Multiplayer({open,onClose,onJoined,onTrouble,getEngine,getAudio,initialCode,touch}:{open:boolean;onClose:()=>void;onJoined:(walk:boolean)=>void;onTrouble:()=>void;getEngine:()=>WorldEngine|null;getAudio:()=>RoomAudio;initialCode:string;touch:boolean}){
  const trouble=useRef(onTrouble);useEffect(()=>{trouble.current=onTrouble;});
+ // Music in sync: whoever last pressed play, pause, skip or seek leads; everyone else follows (tracks come from the
+ // site's music folder, so everyone has the same files).
+ const leading=useRef(false),following=useRef(0),trackList=useRef<Promise<{title:string;src:string}[]>|null>(null);
+ const songs=useCallback(()=>trackList.current??=fetch("/api/music").then(r=>r.json()).then((d:{tracks:{title:string;src:string}[]})=>d.tracks).catch(()=>[]),[]);
  const lobby=useRef<Lobby|null>(null),friends=useRef(new Map<string,Player>()),talking=useRef({me:false,friends:new Map<string,boolean>()});
  const [phase,setPhase]=useState<Phase>("idle"),[status,setStatus]=useState(""),[players,setPlayers]=useState<Player[]>([]),[room,setRoom]=useState("");
  const [code,setCode]=useState(initialCode),[name,setName]=useState(""),[color,setColor]=useState(SWATCHES[0]),[mic,setMic]=useState(true),[muted,setMuted]=useState(false),[ptt,setPtt]=useState(false),[meTalking,setMeTalking]=useState(false),[copied,setCopied]=useState(false),[hasMic,setHasMic]=useState(false);
@@ -32,12 +37,14 @@ export default function Multiplayer({open,onClose,onJoined,onTrouble,getEngine,g
    voice:(id,stream)=>{const s=friends.current.get(id)?.state;void getAudio().voice(id,stream,{x:s?.x??0,y:(s?.y??0)+1.55,z:s?.z??0});},
    door:(id,isOpen)=>getEngine()?.setDoor(id,isOpen),
    gesture:(id,kind)=>{if(kind in GESTURES)getEngine()?.friendGesture(id,kind as Gesture);},
+   // A friend's record player: follow it (latency compensated) and let them lead until someone else presses a control.
+   music:(_id,m)=>{leading.current=false;following.current=performance.now()+1500;const time=m.time+(m.playing?Math.max(0,Math.min(5,(Date.now()-m.sent)/1000)):0);void songs().then(list=>getAudio().followSong(list,RECORD_PLAYER,m.index,time,m.playing));},
   });
   lobby.current=l;const door=(e:Event)=>{const {id,open:o}=(e as CustomEvent<{id:string;open:boolean}>).detail;l.door(id,o);};netBus.addEventListener("door",door);const gesture=(e:Event)=>l.gesture((e as CustomEvent<string>).detail);netBus.addEventListener("gesture",gesture);
   // Closing or leaving the page disconnects straight away (friends see you go at once).
   const bye=()=>l.leave();window.addEventListener("pagehide",bye);window.addEventListener("beforeunload",bye);
   return()=>{window.removeEventListener("pagehide",bye);window.removeEventListener("beforeunload",bye);netBus.removeEventListener("door",door);netBus.removeEventListener("gesture",gesture);l.leave();lobby.current=null;};
- },[getEngine,getAudio]);
+ },[getEngine,getAudio,songs]);
  // In a room: send where you are ~15 times a second, and watch who is talking (for tags and the music ducking).
  useEffect(()=>{
   if(phase!=="in-room")return;let tick=0;
@@ -47,6 +54,15 @@ export default function Multiplayer({open,onClose,onJoined,onTrouble,getEngine,g
   },66);
   return()=>clearInterval(timer);
  },[phase,getEngine,getAudio]);
+ // Your record player: a press of play, pause, skip or seek goes to everyone; while you lead, a beat every 4 s keeps
+ // them in step (and brings late joiners in). Changes that came from a friend are not sent back.
+ useEffect(()=>{
+  if(phase!=="in-room")return;const audio=getAudio();let last:{index:number;playing:boolean;time:number;at:number}|null=null,now:{index:number;playing:boolean;time:number}|null=null;
+  const unsubscribe=audio.subscribeSong(st=>{if(!st)return;const t=performance.now(),expected=last?last.time+(last.playing?(t-last.at)/1000:0):0,changed=!last||st.index!==last.index||st.playing!==last.playing||Math.abs(st.time-expected)>1.5;
+   last={index:st.index,playing:st.playing,time:st.time,at:t};now=st;if(changed&&t>following.current){leading.current=true;lobby.current?.music(st.index,st.time,st.playing);}});
+  const beat=window.setInterval(()=>{if(leading.current&&now)lobby.current?.music(now.index,now.time,now.playing);},4000);
+  return()=>{unsubscribe();clearInterval(beat);};
+ },[phase,getAudio]);
  // M mutes, and with push-to-talk on, holding V talks. Typing in a field never triggers them.
  useEffect(()=>{
   if(phase!=="in-room")return;const live=(m:boolean)=>lobby.current?.setMuted(m);live(ptt?true:muted);

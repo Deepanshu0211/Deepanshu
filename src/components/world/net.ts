@@ -19,7 +19,8 @@ type Message =
   | { t: "talk"; on: boolean }
   | { t: "door"; id: string; open: boolean }
   | { t: "gesture"; g: string }
-  | { t: "bye" };
+  | { t: "bye" }
+  | { t: "music"; i: number; time: number; playing: boolean; sent: number };
 export interface LobbyEvents {
   /** Connection status for the UI. */
   status: (phase: "idle" | "connecting" | "in-room" | "error", text: string) => void;
@@ -31,6 +32,8 @@ export interface LobbyEvents {
   door: (id: string, open: boolean) => void;
   /** A friend waved, pointed, gave a thumbs up, clapped or danced. */
   gesture: (id: string, kind: string) => void;
+  /** A friend played, paused, skipped or seeked on the record player (or it is the steady keep-in-step beat). */
+  music: (id: string, song: { index: number; time: number; playing: boolean; sent: number }) => void;
 }
 // Across different networks a direct connection often fails, so a TURN relay is added when the site has one
 // (see app/api/turn). Fetched fresh for each join: relay credentials are short-lived.
@@ -120,6 +123,7 @@ export class Lobby {
       case "talk": link.player.talking = m.on; this.emitRoster(); break;
       case "door": this.events.door(m.id, m.open); break;
       case "bye": this.drop(id); break; // left on purpose (or closed the tab): gone at once, not after a timeout
+      case "music": if ([m.i, m.time, m.sent].every(n => typeof n === "number" && Number.isFinite(n)) && m.i >= 0 && m.i < 1000) this.events.music(id, { index: m.i, time: m.time, playing: Boolean(m.playing), sent: m.sent }); break;
       case "gesture": if (typeof m.g === "string" && m.g.length < 12) this.events.gesture(id, m.g); break;
     }
   }
@@ -146,6 +150,7 @@ export class Lobby {
   talking(on: boolean) { this.broadcast({ t: "talk", on }); }
   door(id: string, open: boolean) { this.broadcast({ t: "door", id, open }); }
   gesture(kind: string) { this.broadcast({ t: "gesture", g: kind }); }
+  music(index: number, time: number, playing: boolean) { this.broadcast({ t: "music", i: index, time, playing, sent: Date.now() }); }
   /** Mute or unmute without renegotiating: the track keeps flowing, silent. */
   setMuted(muted: boolean) { this.mic?.getAudioTracks().forEach(t => { t.enabled = !muted; }); }
   leave() {

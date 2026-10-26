@@ -74,8 +74,6 @@ export function createStudy(): Area {
   const drapes = curtains(root, [0, 1.98, 3.08], 2.8, 2.5, Math.PI, "#8fb3a3").map(panel => new Cloth(panel, 28, 14));
   // Reading corner: armchair, side table, a lamp and a stack of books.
   perches.push({ id: "study-armchair", group: "study-armchair", at: group(interactive(armchair(root, [2.9, 0, -2.2], -.75, "#9cbcae"), "sit:study-armchair", "Sink into the reading chair"), [0, .5, .06]) }); // sage velvet
-  table(root, [2.2, 0, -2.85], [.45, .55, .45], walnut, walnut, true);
-  books(root, [2.07, .55, -2.85], .25, 3).forEach(b => { b.rotation.z = Math.PI / 2; b.position.y = .03 + (b.position.x - .02) * .0; });
   const reading = place(root, [3.5, 0, -2.85]); cylinder(reading, .14, .15, .03, [0, .015, 0], metal("#2a2622", .45), 32); rod(reading, [0, .03, 0], [0, 1.45, 0], .012, metal("#2a2622", .45));
   const drum = finishes.linen("#efe2c4"); drum.side = T.DoubleSide; drum.emissive = new T.Color("#ffb766"); drum.emissiveIntensity = .4; cylinder(reading, .2, .22, .28, [0, 1.5, 0], drum, 40).castShadow = false;
   // Record player on a sideboard; click to play.

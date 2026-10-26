@@ -187,6 +187,15 @@ export class RoomAudio {
   }
   skip(step: number) { if (!this.song) return; if (step > 0) this.next(); else if (this.song.el.currentTime > 4) this.song.el.currentTime = 0; else this.load(this.song.index - 1); }
   pauseSong() { const s = this.song; if (!s) return; if (s.el.paused) void s.el.play(); else s.el.pause(); }
+  /** Follow a friend's record player: the same track at the same moment, playing or paused (net.ts keeps it in step). */
+  async followSong(tracks: Track[], at: Point, index: number, time: number, playing: boolean) {
+    if (!tracks.length || index < 0 || index >= tracks.length) return;
+    if (!this.song) await this.playFolder(tracks, at, index);
+    const s = this.song!, src = new URL(tracks[index].src, location.href).href; s.tracks = tracks;
+    if (s.index !== index || s.el.src !== src) { s.index = index; s.el.src = src; s.fade.gain.value = 1; }
+    const apply = () => { if (Math.abs(s.el.currentTime - time) > .35) s.el.currentTime = Math.max(0, time); if (playing && s.el.paused) void s.el.play().catch(() => this.report()); else if (!playing && !s.el.paused) s.el.pause(); this.report(); };
+    if (s.el.readyState >= 1) apply(); else s.el.addEventListener("loadedmetadata", apply, { once: true });
+  }
   stopSong() { const s = this.song; if (!s) return; s.el.pause(); this.songListeners.forEach(fn => fn(null)); }
   seek(seconds: number) { const s = this.song; if (s && Number.isFinite(s.el.duration)) s.el.currentTime = Math.max(0, Math.min(s.el.duration - .1, seconds)); }
   setSong(o: Partial<typeof this.songOptions>) { Object.assign(this.songOptions, o); this.applySongOptions(); this.report(); }

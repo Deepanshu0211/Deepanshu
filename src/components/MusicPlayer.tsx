@@ -5,7 +5,7 @@ import styles from "./CozyPortfolio.module.css";
 
 type Track={title:string;src:string};
 /** Where the record player sits in the study (world coordinates): in the room, the music plays from here. */
-const RECORD_PLAYER={x:11.82,y:.82,z:5.2};
+export const RECORD_PLAYER={x:11.82,y:.82,z:5.2};
 const SPOTIFY="https://open.spotify.com/embed/playlist/2mwxl3mZFXZ2qkTynAe3VY?utm_source=generator&theme=0";
 const clock=(s:number)=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}`;
 

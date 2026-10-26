@@ -11,6 +11,7 @@ import { GESTURES,type Gesture } from "./gestures";
 import { wind } from "./materials";
 import { makePerson,walk as stride,sit as sitPose,type Person } from "./people";
 import { loadAvatar,makeAvatar,dressAvatar,type Outfit } from "./avatar";
+import { loadCat } from "./cat";
 import type { PlayerState } from "./net";
 import { computeBoundsTree,acceleratedRaycast } from "three-mesh-bvh";
 // BVH-accelerated picking: rays test a few dozen triangles instead of every triangle in a room.
@@ -42,7 +43,7 @@ export interface WorldCallbacks {
  door?:(id:string,open:boolean)=>void;
  /** You made a gesture (shared with friends in the room). */
  gesture?:(kind:Gesture)=>void;
- screen?:(seat:{id:"computer"|"laptop";x:number;y:number;w:number;h:number}|null)=>void;
+ screen?:(seat:{id:"computer"|"laptop"|"tv";x:number;y:number;w:number;h:number}|null)=>void;
 }
 // Per-weather light: window key colour and strength, sky fill, and the world beyond the glass.
 // `fill` is the soft sky ambient, kept low so light visibly comes from the windows; `win` is the daylight through each
@@ -93,7 +94,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  // Your own body, seen when you look down: it walks and runs with you and tucks its legs in a jump.
  // The head and neck are left out so the camera never sees the inside of them.
  // The visitor's own character model, rigged on load (avatar.ts). Its head is folded away so the camera never sits inside it.
- let avatarFailed=false;const avatarReady=loadAvatar().catch(error=>{avatarFailed=true;console.warn("Character model unavailable",error);});
+ let avatarFailed=false;const avatarReady=loadAvatar().catch(error=>{avatarFailed=true;console.warn("Character model unavailable",error);}),catReady=loadCat().catch(error=>console.warn("Cat model unavailable",error));
  const self=makeAvatar();self.head.scale.setScalar(.001);
  self.root.visible=false;scene.add(self.root);let gait=0,myGesture:{kind:Gesture;start:number}|null=null,figuresMoved=false;
  // Characters cast real sun shadows (avatar.ts), and a soft contact shadow sits under each one's feet. Your own head is
@@ -298,7 +299,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   if(!object)return;const action=object.userData.action as Action;
   if(action.startsWith("sit:")){sitDown(action.slice(4),point);for(const area of areas.values())if(isDescendant(object,area.root))area.interact?.(action);callbacks.action(action,point.clone());return;}
   if(action==="exit"){callbacks.action(action,point.clone());callbacks.action("shelf",openSecret(true));return;}
-  if(action==="computer"||action==="laptop"){sit(action);callbacks.action(action,point.clone());return;}
+  if(action==="computer"||action==="laptop"||action==="tv"){sit(action);callbacks.action(action,point.clone());return;}
   if(action.startsWith("door:")){
     const door=building.doors.find(d=>d.id===action.slice(5));if(!door||door.locked)return;
     const opposite=door.id==="bedroom-archive"?"bedroom":door.id==="archive-workshop"?"archive":door.id==="archive-library"?"archive":"library";
@@ -457,7 +458,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   catch(error){console.error(error);callbacks.notice("The neighbourhood could not load. The flat still works.");}
   await breathe();
   try{const m=await skyModule;step("Downloaded the sky");await breathe();if(destroyed)return;const created=m.createSky();created.root.traverse(o=>o.layers.set(FAR_LAYER));heavens=created;scene.add(created.root);step("Built the sky");}catch{/* the flat works without its sky */}
-  callbacks.progress?.(Math.min(.99,stepsDone/STEPS),"Dressing your character");await avatarReady;if(destroyed)return;
+  callbacks.progress?.(Math.min(.99,stepsDone/STEPS),"Dressing your character");await avatarReady;await catReady;if(destroyed)return;
   indexShadows(lightRig);ensurePost();scene.updateMatrixWorld();let compiled=0;
   const compile=async(root:T.Object3D|undefined,label:string)=>{callbacks.progress?.(Math.min(.99,stepsDone/STEPS),`Compiling shaders · ${label} (${++compiled} of ${COMPILES})`);if(root)await prewarm(root);step(`Compiled ${label}`);};
   await compile(scene.children.includes(bedroom.root)?bedroom.root:undefined,"the bedroom");await compile(building.root,"walls and doors");

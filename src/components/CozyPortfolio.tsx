@@ -13,6 +13,7 @@ import {useInterfaceSounds} from "./useInterfaceSounds";
 import {liveConditions,timeOfDay,type Live} from "./world/live";
 const Telescope=dynamic(()=>import("./Telescope"),{ssr:false});
 const Computer=dynamic(()=>import("./Computer"),{ssr:false});
+const TheaterScreen=dynamic(()=>import("./TheaterScreen"),{ssr:false});
 const SecretDoor=dynamic(()=>import("./SecretDoor"),{ssr:false});
 import {projects,experience,skills,contact,profile} from "./world/content";
 import type {Action,Location,Weather,WorldOptions} from "./world/objects";
@@ -28,7 +29,7 @@ export default function CozyPortfolio(){
  const [ready,setReady]=useState(false),[failed,setFailed]=useState(false),[active,setActive]=useState(false),[entered,setEntered]=useState(false),[classic,setClassic]=useState(false),[paused,setPaused]=useState(false),[progress,setProgress]=useState({value:0,label:"Opening the door"});
  const lastMode=useRef<"pointer"|"drag"|"touch">("pointer");
  const touch=useSyncExternalStore(noSubscribe,coarse,()=>false);
- const [panel,setPanel]=useState<Panel|null>(null),[location,setLocation]=useState<Location>("bedroom"),[target,setTarget]=useState(""),[toast,setToast]=useState(""),[sound,setSound]=useState(false),[motion,setMotion]=useState(true),[weather,setWeather]=useState<Weather>("rain"),[lamp,setLamp]=useState(true),[quality,setQuality]=useState<"auto"|"low">("auto"),[stick,setStick]=useState({x:0,y:0}),[scope,setScope]=useState(false),[weatherMode,setWeatherMode]=useState<"live"|"manual">("live"),[live,setLive]=useState<Live|null>(null),[precise,setPrecise]=useState<{lat:number;lon:number}|null>(null),[spotify,setSpotify]=useState(false),[controls,setControls]=useState(false),[prefs,setPrefs]=useState<Prefs>(defaultPrefs),[sitting,setSitting]=useState(false),[seat,setSeat]=useState<{id:"computer"|"laptop";x:number;y:number;w:number;h:number}|null>(null),[secret,setSecret]=useState(false),[netOpen,setNetOpen]=useState(false),[joinCode,setJoinCode]=useState(""),[member,setMember]=useState<string|null>(null);
+ const [panel,setPanel]=useState<Panel|null>(null),[location,setLocation]=useState<Location>("bedroom"),[target,setTarget]=useState(""),[toast,setToast]=useState(""),[sound,setSound]=useState(false),[motion,setMotion]=useState(true),[weather,setWeather]=useState<Weather>("rain"),[lamp,setLamp]=useState(true),[quality,setQuality]=useState<"auto"|"low">("auto"),[stick,setStick]=useState({x:0,y:0}),[scope,setScope]=useState(false),[weatherMode,setWeatherMode]=useState<"live"|"manual">("live"),[live,setLive]=useState<Live|null>(null),[precise,setPrecise]=useState<{lat:number;lon:number}|null>(null),[spotify,setSpotify]=useState(false),[controls,setControls]=useState(false),[prefs,setPrefs]=useState<Prefs>(defaultPrefs),[sitting,setSitting]=useState(false),[seat,setSeat]=useState<{id:"computer"|"laptop"|"tv";x:number;y:number;w:number;h:number}|null>(null),[secret,setSecret]=useState(false),[netOpen,setNetOpen]=useState(false),[joinCode,setJoinCode]=useState(""),[member,setMember]=useState<string|null>(null);
  const container=useRef<HTMLDivElement>(null),engine=useRef<WorldEngine|null>(null),audio=useRef<RoomAudio|null>(null),dialog=useRef<HTMLDialogElement>(null),timer=useRef<ReturnType<typeof setTimeout>|null>(null),actionRef=useRef<(action:Action)=>void>(()=>{}),options=useRef<WorldOptions>({motion:true,weather:"rain",lamp:true,quality:"auto"});
  const paper=useRef<HTMLDivElement>(null),entry=useRef<HTMLDivElement>(null),chip=useRef<HTMLDivElement>(null),chipMove=useRef<(x:number,y:number)=>void>(()=>{}),closing=useRef(false);
  const visible=!classic&&!failed;
@@ -54,7 +55,7 @@ export default function CozyPortfolio(){
   if(action==="keyboard"){announce("hello, world_  — one small keystroke at a time.");return;}
   if(action==="duck"){announce("Tell the duck what’s broken. Sometimes saying it out loud helps.");return;}
   if(action==="chair")return;
-  if(action==="computer"||action==="laptop"){setSitting(true);return;}
+  if(action==="computer"||action==="laptop"||action==="tv"){setSitting(true);return;}
   if(action==="telescope"){engine.current?.pause();setScope(true);audio.current?.ui("lens");return;}
   if(action==="multiplayer"){engine.current?.pause();setNetOpen(true);audio.current?.ui("boot");return;}
   // A member who signed in this visit is let straight through; it resets on reload.
@@ -160,7 +161,8 @@ export default function CozyPortfolio(){
   {visible&&<Multiplayer open={netOpen} onClose={()=>{setNetOpen(false);resume();}} onJoined={walk=>{setNetOpen(false);if(walk)void enter(lastMode.current==="drag");else{setEntered(true);setPaused(false);}}} onTrouble={()=>setNetOpen(true)} getEngine={getEngine} getAudio={getAudio} initialCode={joinCode} touch={touch}/>}
   {secret&&<SecretDoor motion={motion} onClose={()=>{setSecret(false);resume();}} onUnlock={name=>{setSecret(false);setMember(name);letIn(`Welcome, ${name}.`);}}/>}
   {scope&&<Telescope motion={motion} onClose={()=>{setScope(false);resume();}}/>}
-  {seat&&<Computer seat={seat} motion={motion} onExit={()=>{engine.current?.stand();resume();}}/>}
+  {seat&&seat.id!=="tv"&&<Computer seat={seat as {id:"computer"|"laptop";x:number;y:number;w:number;h:number}} motion={motion} onExit={()=>{engine.current?.stand();resume();}}/>}
+  {seat?.id==="tv"&&<TheaterScreen seat={seat} onExit={()=>{engine.current?.stand();resume();}}/>}
   <noscript><style>{`.${styles.classic}{display:block!important}.${styles.exploration},.${styles.utilities},.${styles.scrim}{display:none!important}`}</style></noscript>
  </div>;
 }

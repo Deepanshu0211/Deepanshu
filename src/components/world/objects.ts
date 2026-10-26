@@ -3,7 +3,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { surface, leafTexture, mottle, projectSurfaces, windify } from "./materials";
 
-export type Action = "multiplayer" | "projects" | "skills" | "about" | "experience" | "contact" | "lamp" | "weather" | "sound" | "keyboard" | "drawer" | "pet" | "duck" | "lab" | "chair" | "cat" | "telescope" | "computer" | "laptop" | "profile" | "record" | "radio" | "fridge" | "kettle" | "globe" | "swing" | "secret" | "exit" | "shelf" | `sit:${string}` | `door:${string}` | `project:${string}` | `skill:${string}`;
+export type Action = "tv" | "multiplayer" | "projects" | "skills" | "about" | "experience" | "contact" | "lamp" | "weather" | "sound" | "keyboard" | "drawer" | "pet" | "duck" | "lab" | "chair" | "cat" | "telescope" | "computer" | "laptop" | "profile" | "record" | "radio" | "fridge" | "kettle" | "globe" | "swing" | "secret" | "exit" | "shelf" | `sit:${string}` | `door:${string}` | `project:${string}` | `skill:${string}`;
 export type Weather = "rain" | "day" | "sunset" | "night";
 export type Location = "bedroom" | "archive" | "rooftop" | "workshop" | "library" | "vault";
 export interface WorldOptions { /** A song is playing on the record player. */ music?: boolean; /** Where people stand (you and friends), for things they push aside: the curtains. */ bodies?: T.Vector3[]; motion: boolean; weather: Weather; lamp: boolean; quality: "auto" | "low"; fov?: number; sensitivity?: number; lights?: number; fan?: number; life?: boolean; ao?: boolean; bloom?: boolean; grain?: boolean; volume?: number; }
@@ -16,7 +16,7 @@ export interface Area {
   interact?: (action: Action) => void;
   dispose?: () => void;
   /** Places to sit and use a screen: the eye position and the screen the camera lines up with. */
-  seats?: { id: "computer" | "laptop"; eye: T.Object3D; screen: T.Mesh }[];
+  seats?: { id: "computer" | "laptop" | "tv"; eye: T.Object3D; screen: T.Mesh }[];
   /** Capture reflections (mirrors) from the finished scene; called after loading and when the light changes. */
   bake?: (renderer: T.WebGLRenderer, scene: T.Scene) => void;
   /** Parts that swing but stay solid (the study's bookshelf doors): a pivot and its collision box in the pivot's space. */

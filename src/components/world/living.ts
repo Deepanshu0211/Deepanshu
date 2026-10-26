@@ -1,8 +1,9 @@
 import * as T from "three";
 import { projects } from "./content";
-import { type Area, colors as c, box, sphere, cylinder, group, sign, plant, interactive, canvasTexture } from "./objects";
-import { fabric, ceramic, metal, emissive, surface, geoRug } from "./materials";
+import { type Area, colors as c, box, cylinder, group, sign, plant, interactive, canvasTexture } from "./objects";
+import { fabric, ceramic, metal, emissive, surface, geoRug, weave } from "./materials";
 import { Cloth } from "./cloth";
+import { placeCat } from "./cat";
 import { sofa, armchair, table, rug, arcLamp, ceilingFan, frame, curtains, mug, bowlOfFruit, vase, books, place, mesh, lathe, cushion, finishes } from "./furniture";
 
 // Project posters drawn as typographic prints, so every project has artwork even without a screenshot.
@@ -36,15 +37,19 @@ export function createLiving(): Area {
   for (let i = 0; i < 3; i++) { const m = box(root, [.22, .008, .29], [1.48, .425 + i * .009, -1.15], fabric(["#e0a526", "#e2d6bd", "#7c90a8"][i], .9), .003); m.rotation.y = .3 - i * .25; }
   mug(root, [1.55, .42, -1.45]); bowlOfFruit(root, [1.3, .42, -1.2]);
   box(root, [.05, .015, .16], [1.55, .43, -2.05], new T.MeshStandardMaterial({ color: "#1d1f1f", roughness: .5 }), .008);
-  // Media wall: a low walnut console and a TV that cycles through the projects.
+  // Home theatre: a 108-inch screen over a long walnut console, tower speakers either side and a soundbar. Idle, it
+  // cycles the project reel; press E on it and you sit down in front of it to watch yapgrid.com on the screen itself.
   const tvUnit = place(root, [3.75, 0, -1.5], -Math.PI / 2);
-  box(tvUnit, [2.4, .42, .45], [0, .3, 0], walnut, .02); for (const x of [-.6, .6]) box(tvUnit, [1.16, .38, .01], [x, .3, .226], surface("#5a3c2c"), .006);
-  for (const x of [-1.1, 1.1]) for (const z of [-.18, .18]) cylinder(tvUnit, .02, .015, .09, [x, .045, z], metal("#2a2622", .45), 12);
-  const tv = interactive(place(tvUnit, [0, 1.25, -.12]), "projects", "Watch the project reel");
-  box(tv, [1.42, .82, .035], [0, 0, 0], new T.MeshPhysicalMaterial({ color: "#121414", roughness: .3, clearcoat: .8 }), .01);
+  box(tvUnit, [2.8, .42, .45], [0, .3, 0], walnut, .02); for (const x of [-.7, .7]) box(tvUnit, [1.36, .38, .01], [x, .3, .226], surface("#5a3c2c"), .006);
+  for (const x of [-1.3, 1.3]) for (const z of [-.18, .18]) cylinder(tvUnit, .02, .015, .09, [x, .045, z], metal("#2a2622", .45), 12);
+  const tv = interactive(place(tvUnit, [0, 1.6, -.14]), "tv", "Watch the big screen · yapgrid");
+  box(tv, [2.46, 1.41, .045], [0, 0, 0], new T.MeshPhysicalMaterial({ color: "#0d0f0f", roughness: .3, clearcoat: .8 }), .012);
+  const speakerCloth = new T.MeshStandardMaterial({ color: "#1b1d1f", roughness: .95, bumpMap: weave(), bumpScale: 1 });
+  for (const x of [-1.6, 1.6]) { const tower = place(tvUnit, [x, 0, -.02]); box(tower, [.26, 1.12, .3], [0, .58, 0], walnut, .015); box(tower, [.22, 1.0, .01], [0, .6, .151], speakerCloth, .004);
+    for (const [y, r] of [[.3, .085], [.62, .085], [.95, .04]] as [number, number][]) cylinder(tower, r, r, .012, [0, y, .158], new T.MeshStandardMaterial({ color: "#141516", roughness: .6 }), 24).rotation.x = Math.PI / 2; }
   let reelIndex = -1, reelAt = 0;
   const reel = canvasTexture(() => { }, 1024, 576);
-  const screen = new T.Mesh(new T.PlaneGeometry(1.38, .78), new T.MeshBasicMaterial({ map: reel, color: new T.Color(1.15, 1.15, 1.15) })); screen.position.z = .019; tv.add(screen);
+  const screen = new T.Mesh(new T.PlaneGeometry(2.4, 1.35), new T.MeshBasicMaterial({ map: reel, color: new T.Color(1.15, 1.15, 1.15) })); screen.position.z = .024; tv.add(screen);
   function drawReel(i: number) {
     const p = projects[i], ctx = (reel.image as HTMLCanvasElement).getContext("2d")!;
     const g = ctx.createLinearGradient(0, 0, 1024, 576); g.addColorStop(0, ["#1d2b28", "#2b2620", "#1f2633", "#2a1f22"][i % 4]); g.addColorStop(1, "#0f1513"); ctx.fillStyle = g; ctx.fillRect(0, 0, 1024, 576);
@@ -56,18 +61,13 @@ export function createLiving(): Area {
     ctx.fillStyle = "rgba(240,234,220,.5)"; ctx.fillRect(60, 520, 904, 3); ctx.fillStyle = "#e0a526"; ctx.fillRect(60, 520, 904 * ((i + 1) / projects.length), 3);
     reel.needsUpdate = true;
   }
-  box(tvUnit, [.9, .07, .1], [0, .56, .1], new T.MeshStandardMaterial({ color: "#1b1d1d", roughness: .5 }), .02);
-  plant(tvUnit, [-1.0, .51, 0], .7); vase(tvUnit, [.95, .51, .05], "#c8bfae");
+  box(tvUnit, [1.6, .08, .1], [0, .56, .1], new T.MeshStandardMaterial({ color: "#1b1d1d", roughness: .5 }), .02);
+  plant(tvUnit, [-1.15, .51, 0], .7); vase(tvUnit, [1.15, .51, .05], "#c8bfae");
   books(tvUnit, [.45, .51, .02], .32, 4).forEach(b => { b.rotation.z = Math.PI / 2; b.position.y = .04; });
   // Reading corner and the household cat, asleep where the afternoon light lands.
-  // The cognac armchair seats one more.
-  perches.push({ id: "armchair-living", group: "armchair-living", at: group(interactive(armchair(root, [-2.9, 0, -2.4], 1.04, "#a4502b"), "sit:armchair-living", "Sit in the armchair"), [0, .5, .06]) });
-  const cat = interactive(place(root, [-2.88, .54, -2.35], .6), "cat", "Pet Mishti, the cat");
-  const fur = new T.MeshPhysicalMaterial({ color: "#c98a4b", roughness: .9, sheen: 1, sheenColor: "#f3cf9a", sheenRoughness: .5 });
-  const body = sphere(cat, [.2, .1, .15], [0, .09, 0], fur); sphere(cat, [.085, .075, .08], [.17, .1, .06], fur);
-  for (const z of [.02, .1]) { const ear = mesh(cat, new T.ConeGeometry(.03, .05, 4), [.19, .17, z], fur); ear.rotation.z = -.2; }
-  const tail = mesh(cat, new T.TorusGeometry(.14, .022, 8, 24, Math.PI * 1.1), [-.02, .04, .02], fur); tail.rotation.set(Math.PI / 2, 0, 1.2);
-  for (const z of [.035, .085]) box(cat, [.012, .004, .02], [.245, .11, z], new T.MeshStandardMaterial({ color: "#2a1d14" }), 0);
+  // The cognac armchair is Mishti's: nobody sits there (it is not a seat), and she stands on the cushion.
+  armchair(root, [-2.9, 0, -2.4], 1.04, "#a4502b");
+  const catTurn = .55, cat = interactive(place(root, [-2.9, .52, -2.36], catTurn), "cat", "Pet Mishti, the cat"); placeCat(cat);
   // Entry console: mirror, keys and a framed photo.
   const consoleTable = place(root, [-3.78, 0, -1.4], Math.PI / 2);
   box(consoleTable, [1.2, .04, .34], [0, .8, 0], oak, .01); for (const x of [-.55, .55]) for (const z of [-.13, .13]) cylinder(consoleTable, .015, .015, .78, [x, .39, z], metal("#2a2622", .45), 10); box(consoleTable, [1.1, .02, .3], [0, .2, 0], oak, .005);
@@ -109,10 +109,12 @@ export function createLiving(): Area {
   for (const hand of [hourHand, minuteHand]) { hand.geometry.translate(0, hand.position.y, 0); hand.position.y = 0; hand.userData.dynamic = true; }
   return {
     root, camera: [9, 7.8, 11], target: [0, 1.2, 0], anchors: [], perches,
-    interact(action) { if (action === "cat") catUntil = performance.now() + 2600; },
+    // Watching the big screen: the middle of the sofa, eyes level with the picture.
+    seats: [{ id: "tv", eye: place(root, [-.2, 1.22, -1.5]), screen }],
+    interact(action) { if (action === "cat") catUntil = performance.now() + 2600; }, // a happy wiggle while she purrs
     update(time, delta, options) {
       if (options.motion) fan.blades.rotation.y -= delta * 4.4 * (options.fan ?? 1);
-      body.scale.y = .1 * (1 + (options.motion ? Math.sin(time * 1.6) * .05 : 0)); const flick = Math.sin(time * .7) > .97; tail.rotation.z = 1.2 + (options.motion && (performance.now() < catUntil || flick) ? Math.sin(time * 8) * .25 : 0);
+      { const petting = options.motion && performance.now() < catUntil; cat.rotation.y = catTurn + (petting ? Math.sin(time * 9) * .12 : 0); cat.rotation.z = petting ? Math.sin(time * 7) * .04 : 0; }
       for (const d of drapes) d.step(delta, options);
       (lamp.bulb.material as T.MeshBasicMaterial).color.setScalar(options.weather === "day" ? 1.2 : 2.6); reading.intensity = options.weather === "day" ? .8 : 2.4;
       if (time - reelAt > 4.5 || reelIndex < 0) { reelAt = time; reelIndex = (reelIndex + 1) % projects.length; drawReel(reelIndex); }
