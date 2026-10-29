@@ -8,6 +8,7 @@ import { createBuilding,rooms } from "./building";
 import { Walker } from "./controller";
 import { createPost,FAR_LAYER,type Post } from "./post";
 import { GESTURES,type Gesture } from "./gestures";
+import { createSmoke } from "./smoke";
 import { wind } from "./materials";
 import { makePerson,walk as stride,sit as sitPose,type Person } from "./people";
 import { loadAvatar,makeAvatar,dressAvatar,type Outfit } from "./avatar";
@@ -96,7 +97,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  // The visitor's own character model, rigged on load (avatar.ts). Its head is folded away so the camera never sits inside it.
  let avatarFailed=false;const avatarReady=loadAvatar().catch(error=>{avatarFailed=true;console.warn("Character model unavailable",error);}),catReady=loadCat().catch(error=>console.warn("Cat model unavailable",error));
  const self=makeAvatar();self.head.scale.setScalar(.001);
- self.root.visible=false;scene.add(self.root);let gait=0,myGesture:{kind:Gesture;start:number}|null=null,figuresMoved=false;
+ self.root.visible=false;scene.add(self.root);let gait=0,myGesture:{kind:Gesture;start:number;puff?:number}|null=null,figuresMoved=false;
  // Characters cast real sun shadows (avatar.ts), and a soft contact shadow sits under each one's feet. Your own head is
  // folded away for the camera, so a head that only exists in shadow maps stands in for it: your shadow has a head.
  const blobMaterial=new T.MeshBasicMaterial({map:(()=>{const c=document.createElement("canvas");c.width=c.height=64;const g=c.getContext("2d")!,r=g.createRadialGradient(32,32,0,32,32,32);r.addColorStop(0,"rgba(0,0,0,.5)");r.addColorStop(.5,"rgba(0,0,0,.26)");r.addColorStop(1,"rgba(0,0,0,0)");g.fillStyle=r;g.fillRect(0,0,64,64);return new T.CanvasTexture(c);})(),transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2});
@@ -108,13 +109,14 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  const shadowHead=new T.Mesh(new T.SphereGeometry(.11,12,10),new T.MeshBasicMaterial());shadowHead.scale.set(.9,1.12,1);shadowHead.position.y=1.6;shadowHead.castShadow=true;self.body.add(shadowHead);
  shadowHead.layers.test=()=>{const rt=renderer.getRenderTarget();if(!rt)return false;if(rt===light.shadow.map)return true;for(const l of shadowLights)if(l.shadow.map===rt)return true;return false;};
  /** Pose a gesture over the walk or seat pose; false once it is over (a dance also ends when they walk off). */
- function gesturePose(p:Person,g:{kind:Gesture;start:number},now:number,pitch:number,moving:boolean){
+ function gesturePose(p:Person,g:{kind:Gesture;start:number},now:number,pitch:number,moving:boolean,firstPerson=false){
   const t=(now-g.start)/1000,{dur}=GESTURES[g.kind];if(t>dur||(g.kind==="dance"&&moving&&t>.6))return false;
   const w=Math.max(0,Math.min(1,t/.25,(dur-t)/.3)),to=(e:T.Euler,axis:"x"|"y"|"z",v:number)=>{e[axis]+=(v-e[axis])*w;};
   const [rs,ls]=p.shoulders,[re,le]=p.elbows;
   if(g.kind==="wave"){to(rs.rotation,"z",-2.5+Math.sin(t*9)*.28);to(rs.rotation,"x",-.2);to(re.rotation,"x",-.5);}
   else if(g.kind==="point"){to(rs.rotation,"x",-Math.PI/2-pitch*.9);to(rs.rotation,"z",.08);to(re.rotation,"x",0);}
   else if(g.kind==="thumbs"){to(rs.rotation,"x",-.75);to(re.rotation,"x",-1.45);to(rs.rotation,"z",.12);}
+  else if(g.kind==="smoke"){const d=smokeDraw(t);if(firstPerson){to(rs.rotation,"x",-1.36+.08*d);to(rs.rotation,"z",.28+.32*d);to(re.rotation,"x",-.88-.44*d);}else{to(rs.rotation,"x",-.55-.55*d);to(rs.rotation,"z",.1+d);to(re.rotation,"x",-1.5-.45*d);}} // rest: hand at the chest; draw: across the chest to the mouth (solved for the rig's arm lengths)
   else if(g.kind==="clap"){[[rs,re,-1],[ls,le,1]].forEach(([sh,el,side])=>{const sb=sh as T.Object3D,eb=el as T.Object3D,sd=side as number;to(sb.rotation,"x",-1.1);to(sb.rotation,"z",-sd*(.36+.14*Math.sin(t*14)));to(eb.rotation,"x",-.95);});}
   else{[[rs,re,-1,0],[ls,le,1,Math.PI]].forEach(([sh,el,side,phase])=>{const sb=sh as T.Object3D,eb=el as T.Object3D;to(sb.rotation,"z",(side as number)*(1.5+.8*Math.sin(t*6+(phase as number))));to(eb.rotation,"x",-.6);});
    p.body.position.y+=Math.abs(Math.sin(t*6))*.05*w;to(p.body.rotation,"z",Math.sin(t*3)*.12);for(const k of p.knees)to(k.rotation,"x",.25+.25*Math.sin(t*6));for(const h of p.hips)to(h.rotation,"x",-.12);}
@@ -122,10 +124,29 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  }
  /** Lying down (the bed): the body flat on its back along the perch, head at the perch, feet toward where it faces. */
  function liePose(p:Person,at:T.Vector3,fwd:T.Vector3){p.root.position.set(at.x+fwd.x*1.62,at.y+.06,at.z+fwd.z*1.62);p.root.rotation.y=Math.atan2(fwd.x,fwd.z);stride(p,0,0);p.body.position.y=0;p.body.rotation.x=-Math.PI/2;}
+ // Smoking (gesture 6): a drag every three seconds (hand to mouth and back), the ember brightening while you draw, a thin
+ // wisp from the tip, and a puff breathed out after each drag. Friends see a cigarette in your right hand; you see your
+ // own hand holding one at the bottom of the view, rising to your mouth.
+ const smoke=createSmoke(scene,FAR_LAYER),ease=(x:number)=>x*x*(3-2*x);
+ function smokeDraw(t:number){const c=t%3;return c<.5?ease(c/.5):c<1.1?1:c<1.5?1-ease((c-1.1)/.4):0;}
+ const paper=new T.MeshStandardMaterial({color:"#f4f1ea",roughness:.8}),filterTip=new T.MeshStandardMaterial({color:"#c98a4b",roughness:.7}),glowing=new T.MeshBasicMaterial({color:new T.Color("#ff6a1a").multiplyScalar(2.2)});
+ /** A cigarette along local +z, lit end forward; userData.tip is the ember. */
+ function cigarette(){const g=new T.Group(),stick=new T.Mesh(new T.CylinderGeometry(.0045,.0045,.07,8),paper);stick.rotation.x=Math.PI/2;g.add(stick);
+  const end=new T.Mesh(new T.CylinderGeometry(.0047,.0047,.022,8),filterTip);end.rotation.x=Math.PI/2;end.position.z=-.046;g.add(end);
+  const ember=new T.Mesh(new T.SphereGeometry(.0052,8,6),glowing);ember.position.z=.036;g.add(ember);g.userData.tip=ember;return g;}
+ /** The cigarette in a person's right hand (made on first use). On the rigged character the hand sits along the forearm bone. */
+ function heldCigarette(p:Person){let c=p.root.userData.cigarette as T.Group|undefined;if(!c){c=cigarette();const hand=p.hands[0];c.position.set(hand instanceof T.Bone?-.36:0,-.02,.05);hand.add(c);p.root.userData.cigarette=c;}return c;}
+ const mouth=new T.Vector3(),facing=new T.Vector3(),tipAt=new T.Vector3();
+ /** Ember, wisp and the breath out for one smoker; `tip` is their ember, `mouthAt`/`face` where and which way they breathe. */
+ function smokeTick(g:{start:number;puff?:number},tip:T.Object3D,mouthAt:T.Vector3,face:T.Vector3,dt:number,now:number,glow=.8){
+  const t=(now-g.start)/1000,cycle=Math.floor(t/3),d=smokeDraw(t);tip.scale.setScalar(1+d*glow);
+  if(Math.random()<dt*(4+d*10)){tip.getWorldPosition(tipAt);smoke.emit(tipAt,.02,1.8);}
+  if(t%3>1.6&&(g.puff??-1)<cycle&&t<GESTURES.smoke.dur-.4){g.puff=cycle;for(let i=0;i<8;i++)smoke.emit(mouthAt,.035,2.6,face);}
+ }
  function startGesture(kind:Gesture){myGesture={kind,start:performance.now()};callbacks.gesture?.(kind);lastRender=0;}
  // Friends in the room (net.ts): each one is an articulated person easing toward their latest pose, walking at
  // the speed they really walk, with a name tag that lights up green while they talk.
- type Remote={person:ReturnType<typeof makePerson>;tag:T.Sprite;canvas:HTMLCanvasElement;texture:T.CanvasTexture;name:string;color:string;outfit:string;talking:boolean;goal:PlayerState|null;gait:number;placed:boolean;blob:T.Mesh;gesture:{kind:Gesture;start:number}|null;last:T.Vector3};
+ type Remote={person:ReturnType<typeof makePerson>;tag:T.Sprite;canvas:HTMLCanvasElement;texture:T.CanvasTexture;name:string;color:string;outfit:string;talking:boolean;goal:PlayerState|null;gait:number;placed:boolean;blob:T.Mesh;gesture:{kind:Gesture;start:number;puff?:number}|null;last:T.Vector3};
  const remotes=new Map<string,Remote>(),skins=["#8d5a3b","#b9825c","#c99a76","#6f4630","#d8ab84"];
  function drawTag(r:Remote){const g=r.canvas.getContext("2d")!;g.clearRect(0,0,512,128);g.fillStyle="rgba(31,26,23,.72)";g.beginPath();g.roundRect(8,24,496,80,40);g.fill();
   g.fillStyle=r.talking?"#8fd19e":r.color;g.beginPath();g.arc(62,64,r.talking?20:15,0,Math.PI*2);g.fill();if(r.talking){g.strokeStyle="#8fd19e88";g.lineWidth=6;g.beginPath();g.arc(62,64,30,0,Math.PI*2);g.stroke();}
@@ -134,7 +155,8 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   let hash=0;for(const ch of id)hash=(hash*31+ch.charCodeAt(0))|0;
   const person=avatarFailed?makePerson({skin:skins[Math.abs(hash)%skins.length],top:outfit?.top??color,bottom:outfit?.bottom??"#2d3a6b",hair:outfit?.hair??"#1f1a17",longHair:Math.abs(hash)%3===0}):makeAvatar(outfit);person.root.visible=false;scene.add(person.root);
   const canvas=document.createElement("canvas");canvas.width=512;canvas.height=128;const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;
-  const tag=new T.Sprite(new T.SpriteMaterial({map:texture,transparent:true,depthWrite:false}));tag.scale.set(.72,.18,1);tag.position.y=2.02;person.root.add(tag);
+  const tag=new T.Sprite(new T.SpriteMaterial({map:texture,transparent:true,depthWrite:false}));tag.scale.set(.72,.18,1);tag.position.y=2.02;tag.layers.set(FAR_LAYER); // off the AO layer, which drew its clear edges black
+person.root.add(tag);
   const r:Remote={person,tag,canvas,texture,name,color,outfit:JSON.stringify(outfit??null),talking:false,goal:null,gait:0,placed:false,blob:blob(),gesture:null,last:new T.Vector3()};drawTag(r);return r;}
  function dropRemote(id:string){const r=remotes.get(id);if(!r)return;remotes.delete(id);scene.remove(r.person.root);scene.remove(r.blob);r.person.root.traverse(o=>{if(o instanceof T.Mesh&&!o.userData.shared)o.geometry.dispose();});r.texture.dispose();(r.tag.material as T.SpriteMaterial).dispose();}
  function updateRemotes(dt:number){const k=1-Math.exp(-dt*12);for(const r of remotes.values()){const g=r.goal;if(!g)continue;const root=r.person.root;
@@ -151,6 +173,8 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   { const look=Math.atan2(Math.sin(g.yaw+Math.PI-root.rotation.y),Math.cos(g.yaw+Math.PI-root.rotation.y)),head=r.person.head.rotation,hk=1-Math.exp(-dt*14);
     head.y+=(T.MathUtils.clamp(look,-1.2,1.2)-head.y)*hk;head.x+=(T.MathUtils.clamp(-g.pitch*.8,-.75,.6)-head.x)*hk; }
   if(r.gesture&&!gesturePose(r.person,r.gesture,performance.now(),g.pitch,g.speed>.3)){r.gesture=null;drawTag(r);}
+  const smoking=r.gesture?.kind==="smoke",held=smoking?heldCigarette(r.person):r.person.root.userData.cigarette as T.Group|undefined;if(held)held.visible=smoking;
+  if(smoking&&held&&r.person.root.visible){r.person.head.getWorldPosition(mouth);facing.set(Math.sin(root.rotation.y),0,Math.cos(root.rotation.y));mouth.y+=.08;mouth.addScaledVector(facing,.12);smokeTick(r.gesture!,held.userData.tip,mouth,facing,dt,performance.now());}
   // Standing where you stand (everyone arrives at the same spot): hidden until they step out of your eyes.
   r.person.root.visible=Math.hypot(root.position.x-camera.position.x,root.position.z-camera.position.z)>.55;
   placeBlob(r.blob,root.position.x,root.position.y,root.position.z,g.grounded||Boolean(perch),r.person.root.visible&&perch?.pose!=="lie");
@@ -380,7 +404,11 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   if(self.root.visible&&perched){if(perched.pose==="lie")liePose(self,seatAt,seatFwd);else{self.root.position.set(seatAt.x,seatAt.y-SEAT_DROP,seatAt.z);self.root.rotation.y=Math.atan2(seatFwd.x,seatFwd.z);stride(self,0,0);sitPose(self);}}
   else if(self.root.visible){gait+=dt*speed*3.4;stride(self,gait,options.motion?Math.min(1.6,speed/2.35):0);if(!player.grounded&&options.motion){for(const k of self.knees)k.rotation.x=.75;for(const h of self.hips)h.rotation.x=-.5;}
    self.root.position.set(player.capsule.start.x+Math.sin(player.yaw)*.16,player.capsule.start.y-.24,player.capsule.start.z+Math.cos(player.yaw)*.16);self.root.rotation.y=player.yaw+Math.PI;}
-  if(myGesture&&!(self.root.visible&&gesturePose(self,myGesture,performance.now(),player.pitch,speed>.3)))myGesture=null;
+  if(myGesture&&!(self.root.visible&&gesturePose(self,myGesture,performance.now(),player.pitch,speed>.3,true)))myGesture=null;
+  // Your own smoking hand is your character's real right hand, held up in view (see gesturePose).
+  const smokingNow=myGesture?.kind==="smoke"&&self.root.visible,myCig=smokingNow?heldCigarette(self):self.root.userData.cigarette as T.Group|undefined;if(myCig)myCig.visible=smokingNow;
+  if(smokingNow&&myCig){camera.getWorldDirection(facing);mouth.copy(camera.position).addScaledVector(facing,.16);mouth.y-=.07;scene.updateMatrixWorld();smokeTick(myGesture!,myCig.userData.tip,mouth,facing,dt,now,.4);figuresMoved=true;}
+  smoke.update(dt);if(smoke.active)figuresMoved=true;
   placeBlob(selfBlob,player.capsule.start.x,player.capsule.start.y-.24,player.capsule.start.z,player.grounded,self.root.visible&&perched?.pose!=="lie");
   if(self.root.visible&&(speed>.05||!player.grounded||myGesture||perched))figuresMoved=true;
   if(player.active){if(wasGrounded&&player.velocity.y>2.5)callbacks.cue?.("jump",camera.position);else if(!wasGrounded&&player.grounded&&fallSpeed<-1.5)callbacks.cue?.("land",player.capsule.start);}
@@ -471,8 +499,8 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
   const warmTag=new T.Sprite(new T.SpriteMaterial({map:new T.CanvasTexture(document.createElement("canvas")),transparent:true,depthWrite:false}));scene.add(warmTag);
   const culled:T.Object3D[]=[];scene.traverse(o=>{if(o.frustumCulled){o.frustumCulled=false;culled.push(o);}});
   renderer.shadowMap.needsUpdate=true;for(const l of shadowLights)l.shadow.needsUpdate=true;
-  self.root.visible=true;selfBlob.visible=true; // so the character's skinned and shadow shaders compile here too
-  try{raster();bakeReflections();}catch(error){console.warn(error);}finally{for(const o of culled)o.frustumCulled=true;self.root.visible=false;scene.remove(warmTag);warmTag.material.map?.dispose();warmTag.material.dispose();}
+  self.root.visible=true;selfBlob.visible=true;heldCigarette(self).visible=true;smoke.warm(true); // so the character's skinned and shadow shaders, the cigarette and smoke compile here too
+  try{raster();bakeReflections();}catch(error){console.warn(error);}finally{for(const o of culled)o.frustumCulled=true;self.root.visible=false;heldCigarette(self).visible=false;smoke.warm(false);scene.remove(warmTag);warmTag.material.map?.dispose();warmTag.material.dispose();}
   if(destroyed)return;renderer.shadowMap.needsUpdate=true;bakeSoon=performance.now()+300;callbacks.progress?.(1,"Ready");callbacks.ready();renderer.setAnimationLoop(frame);
  })();
  return {enter,pause,interact,sit,stand,setStick(x:number,y:number){player.stick.set(x,y);},
@@ -497,7 +525,7 @@ export function createWorld(container:HTMLElement,callbacks:WorldCallbacks,initi
  debugScene(){return scene;},debugRenderer(){return renderer;},benchmark(on:boolean){if(on){benchOn=true;Object.assign(bench,{frames:0,cpu:0,full:0,calls:0,tris:0});return null;}benchOn=false;const n=Math.max(1,bench.frames);return {frames:bench.frames,cpuMs:+(bench.cpu/n).toFixed(2),frameMs:+(bench.full/n).toFixed(2),calls:Math.round(bench.calls/n),tris:Math.round(bench.tris/n)};},
  // Development aid for visual QA: jump to a spot, loading whatever rooms are near it.
  async teleport(x:number,z:number,yaw:number,pitch=-.05){perched=null;player.seated=null;for(const id of Object.keys(rooms) as Location[])if(Math.hypot(rooms[id].center[0]-x,rooms[id].center[1]-z)<9)await load(id);for(const door of building.doors)if(!door.locked)door.target=Math.PI*.53*door.swing;player.place(x,z,yaw,pitch);lastRender=0;},setOptions(next:WorldOptions){options={...next};baseFov=(options.fov??68)+(camera.aspect<.8?10:0);if(post){post.ao.enabled=options.ao!==false&&!aoOff;post.bloom.enabled=options.bloom!==false;post.grain(options.grain!==false);}if(outdoors)outdoors.setLife(options.life!==false);if(!postWanted()&&post){post.dispose();post=null;}renderer.setPixelRatio(ratio());sizePost();lastRender=0;},
- dispose(){destroyed=true;pause();renderer.setAnimationLoop(null);resize.disconnect();document.removeEventListener("pointerlockchange",lockChange);document.removeEventListener("keydown",keyDown);document.removeEventListener("keyup",keyUp);document.removeEventListener("visibilitychange",visibility);window.removeEventListener("blur",blurred);canvas.removeEventListener("pointerdown",down);canvas.removeEventListener("pointermove",move);canvas.removeEventListener("pointerup",up);canvas.removeEventListener("pointercancel",up);canvas.removeEventListener("pointerleave",leave);canvas.removeEventListener("click",click);canvas.removeEventListener("webglcontextlost",lost);canvas.removeEventListener("contextmenu",context);document.removeEventListener("mouseup",mouseUp);for(const area of areas.values())area.dispose?.();for(const id of Array.from(remotes.keys()))dropRemote(id);post?.dispose();scene.environment?.dispose();disposeObject(scene);light.shadow.dispose();renderer.dispose();renderer.forceContextLoss();canvas.remove();}
+ dispose(){destroyed=true;pause();smoke.dispose();renderer.setAnimationLoop(null);resize.disconnect();document.removeEventListener("pointerlockchange",lockChange);document.removeEventListener("keydown",keyDown);document.removeEventListener("keyup",keyUp);document.removeEventListener("visibilitychange",visibility);window.removeEventListener("blur",blurred);canvas.removeEventListener("pointerdown",down);canvas.removeEventListener("pointermove",move);canvas.removeEventListener("pointerup",up);canvas.removeEventListener("pointercancel",up);canvas.removeEventListener("pointerleave",leave);canvas.removeEventListener("click",click);canvas.removeEventListener("webglcontextlost",lost);canvas.removeEventListener("contextmenu",context);document.removeEventListener("mouseup",mouseUp);for(const area of areas.values())area.dispose?.();for(const id of Array.from(remotes.keys()))dropRemote(id);post?.dispose();scene.environment?.dispose();disposeObject(scene);light.shadow.dispose();renderer.dispose();renderer.forceContextLoss();canvas.remove();}
  };
 }
 export type WorldEngine=ReturnType<typeof createWorld>;
